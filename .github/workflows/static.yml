@@ -37,7 +37,7 @@ jobs:
 
       # Step 3: Install dependencies
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
+        run: cd ./reAnimate-playground && yarn install --frozen-lockfile
 
       # Step 4: Build static files (adjust based on your build command)
       - name: Build project
