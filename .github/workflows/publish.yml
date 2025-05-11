@@ -37,12 +37,12 @@ jobs:
 
       # Step 3: Install dependencies
       - name: Install dependencies frontend
-        working-directory: ./reAnimate-playground
+        working-directory: ./playground
         run: npm ci
 
       # Step 4: Build static files (adjust based on your build command)
       - name: Build frontend project
-        working-directory: ./reAnimate-playground
+        working-directory: ./playground
         run: npm run build
 
       # Step 5: Configure GitHub Pages
@@ -53,7 +53,7 @@ jobs:
       - name: Upload static files
         uses: actions/upload-pages-artifact@v3
         with:
-          path: './reAnimate-playground/dist'
+          path: ./playground/dist
 
       # Step 7: Deploy to GitHub Pages
       - name: Deploy to GitHub Pages
