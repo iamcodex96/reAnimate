@@ -15,9 +15,9 @@ ReAnimate is a powerful and modular reactive animation library built using **RxJ
 You can install the library using **yarn** or **npm**:
 
 ```shell
-yarn add reanimate rxjs
+yarn add @re-code/animate rxjs
 # or
-npm install reanimate rxjs
+npm install @re-code/animate rxjs
 ```
 ## Basic Usage
 
