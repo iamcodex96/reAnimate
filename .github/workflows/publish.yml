@@ -53,7 +53,7 @@ jobs:
       - name: Upload static files
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./playground/dist/*
+          path: ./playground/dist
 
       # Step 7: Deploy to GitHub Pages
       - name: Deploy to GitHub Pages
