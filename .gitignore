@@ -1,6 +1,5 @@
 # Dependencies
 node_modules/
-dist/
 
 # TypeScript compiled files
 *.js
