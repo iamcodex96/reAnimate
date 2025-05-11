@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+dist/
+
+# TypeScript compiled files
+*.js
+*.jsx
+*.js.map
+*.d.ts
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+
+# Runtime environment files
+.env
+.env.local
+.env.*.local
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Miscellaneous
+coverage/
+*.log
+*.out
+*.lock
+*.tmp
+
+# Git-specific
+*.orig
+
+# Package lock files (optional, if you want to force regenerate them)
+# Uncomment these lines if you want to ignore lock files
+# package-lock.json
+# yarn.lock

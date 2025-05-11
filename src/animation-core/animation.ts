@@ -1,0 +1,59 @@
+import { Observable, animationFrameScheduler, SchedulerLike } from 'rxjs';
+import { observeOn } from 'rxjs/operators';
+
+export type AnimationConfig = {
+  from: number;
+  to: number;
+  duration: number;
+  easing: (t: number) => number;
+};
+
+export type AnimationState = {
+  value: number;
+  progress: number;
+  isDone: boolean;
+};
+
+/**
+ * The main animation function built as a functional construct.
+ * @param config - The configuration for animation
+ * @param scheduler - Scheduler for controlling animation frame updates
+ * @returns Observable<AnimationState>
+ */
+export const createAnimation = (
+  config: AnimationConfig,
+  scheduler: SchedulerLike = animationFrameScheduler
+): Observable<AnimationState> => {
+  const { from, to, duration, easing = (t: number) => t } = config;
+
+  return new Observable<AnimationState>((subscriber) => {
+    const startTime = performance.now();
+
+    // Steps through the animation frames
+    const step = (now: number) => {
+      const elapsedTime = now - startTime;
+      const progress = Math.min(elapsedTime / duration, 1);
+      const easedProgress = easing(progress);
+
+      // Calculate the current value based on the easing function
+      const currentValue = from + easedProgress * (to - from);
+
+      subscriber.next({
+        value: currentValue,
+        progress,
+        isDone: progress === 1,
+      });
+
+      if (progress < 1) {
+        // Continue animation if not done
+        scheduler.schedule(() => step(performance.now()));
+      } else {
+        // When animation is complete
+        subscriber.complete();
+      }
+    };
+
+    // Start the step logic
+    step(performance.now());
+  }).pipe(observeOn(scheduler));
+};

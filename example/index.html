@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reactive Animation Test</title>
+  <style>
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      background: #f5f5f5;
+    }
+
+    .box {
+      width: 50px;
+      height: 50px;
+      background-color: #3498db;
+      border-radius: 5px;
+      position: absolute;
+      transform: translateX(0px);
+    }
+  </style>
+</head>
+<body>
+  <!-- Animation Box -->
+  <div class="box"></div>
+
+  <!-- Your TypeScript Output -->
+  <script type="module">
+    // Load your library to test animation
+    import { createAnimation } from '../dist/animation-core/animation.js';
+    import { easings } from '../dist/animation-easings/easings.js'; // Adjust the path if necessary
+    import { styleBinder } from '../dist/animation-utils/dom-binding.util.js';
+
+    const box = document.querySelector('.box');
+
+    // Animate the box's position with your reactive system
+    createAnimation.animate({
+      from: 0,
+      to: 300, // Move 300px to the right
+      duration: 2000, // 2 seconds
+      easing: easings.easeInOutQuad, // Smooth ease-in-out transition
+    }).subscribe({
+      // Update the box’s position dynamically
+      next: (state) => {
+        bindStyle(box, 'transform')(`translateX(${state.value}px)`);
+      },
+      complete: () => console.log('Animation completed!'),
+    });
+  </script>
+</body>
+</html>
