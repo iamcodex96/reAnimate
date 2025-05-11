@@ -21,7 +21,7 @@ The main entry point of the library. It exports the core functionality, utilitie
 ### `src/animation-core/animation.ts`
 Defines the core animation logic and APIs to create, control, and manage animations. This module serves as the foundation of the library.
 
-### `src/animation-utils/dom-binding.util.ts`
+### `src/animation-utils/style-binding.util.ts`
 Contains utility functions for DOM integration. For example, it may include methods to bind animations directly to DOM elements or manipulate them in real-time.
 
 ### `src/animation-easings/easings.ts`

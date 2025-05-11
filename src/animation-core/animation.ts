@@ -5,7 +5,7 @@ export type AnimationConfig = {
   from: number;
   to: number;
   duration: number;
-  easing: (t: number) => number;
+  easing?: (t: number) => number;
 };
 
 export type AnimationState = {
@@ -20,7 +20,7 @@ export type AnimationState = {
  * @param scheduler - Scheduler for controlling animation frame updates
  * @returns Observable<AnimationState>
  */
-export const createAnimation = (
+export const animate = (
   config: AnimationConfig,
   scheduler: SchedulerLike = animationFrameScheduler
 ): Observable<AnimationState> => {
@@ -28,7 +28,9 @@ export const createAnimation = (
 
   return new Observable<AnimationState>((subscriber) => {
     const startTime = performance.now();
-
+    if (config.duration <= 0) {
+      throw new Error('Invalid duration. Duration must be greater than 0');
+    }
     // Steps through the animation frames
     const step = (now: number) => {
       const elapsedTime = now - startTime;
