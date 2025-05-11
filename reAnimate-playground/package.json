@@ -5,9 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "preview": "vite preview",
-    "prepare-index": "cp ./index.html ./dist/index.html",
-    "build": "npm run prepare-index && vite build"
+    "build": "vite build",
+    "preview": "vite preview"
   },
   "dependencies": {
     "@re-code/animate": "^0.0.7",
