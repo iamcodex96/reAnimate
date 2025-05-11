@@ -1,5 +1,4 @@
-import { Observable, animationFrameScheduler, SchedulerLike } from 'rxjs';
-import { observeOn } from 'rxjs/operators';
+import { Observable, animationFrameScheduler, SchedulerLike, Subscriber, observeOn } from 'rxjs';
 
 export type AnimationConfig = {
   from: number;
@@ -26,7 +25,7 @@ export const animate = (
 ): Observable<AnimationState> => {
   const { from, to, duration, easing = (t: number) => t } = config;
 
-  return new Observable<AnimationState>((subscriber) => {
+  return new Observable<AnimationState>((subscriber: Subscriber<AnimationState>) => {
     const startTime = performance.now();
     if (config.duration <= 0) {
       throw new Error('Invalid duration. Duration must be greater than 0');
@@ -47,10 +46,8 @@ export const animate = (
       });
 
       if (progress < 1) {
-        // Continue animation if not done
         scheduler.schedule(() => step(performance.now()));
       } else {
-        // When animation is complete
         subscriber.complete();
       }
     };

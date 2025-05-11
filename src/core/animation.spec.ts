@@ -1,4 +1,4 @@
-import { animate, AnimationConfig } from './animation';
+import {animate, AnimationConfig, AnimationState} from './animation';
 
 describe('animate', () => {
   it('should emit states and complete for a simple linear animation', (done) => {
@@ -11,7 +11,7 @@ describe('animate', () => {
 
     const states: number[] = [];
     animate(config).subscribe({
-      next: (state) => {
+      next: (state: AnimationState) => {
         states.push(state.value);
       },
       complete: () => {

@@ -1,6 +1,6 @@
 {
   "name": "@re-code/animate",
-  "version": "0.0.3",
+  "version": "0.0.6",
   "main": "dist/index.js",
   "scripts": {
     "test": "jest --config jest.config.js",
@@ -13,7 +13,6 @@
   "license": "MIT",
   "description": "ReAnimate is a powerful and modular reactive animation library built using RxJS",
   "dependencies": {
-    "@re-code/animate": "^0.0.2",
     "rxjs": "^7.8.2",
     "ts-jest": "^29.3.2",
     "typescript": "^5.8.3"
