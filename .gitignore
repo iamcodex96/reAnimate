@@ -1,13 +1,13 @@
 # Dependencies
 node_modules/
 
-!reAnimate-playground/*
-
 # TypeScript compiled files
 *.js
 *.jsx
 *.js.map
 *.d.ts
+!vite.config.js
+!main.js
 
 # Logs
 npm-debug.log*

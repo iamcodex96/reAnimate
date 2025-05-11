@@ -36,12 +36,14 @@ jobs:
           cache: 'npm'
 
       # Step 3: Install dependencies
-      - name: Install dependencies
-        run: cd ./reAnimate-playground && yarn install --frozen-lockfile
+      - name: Install dependencies frontend
+        working-directory: ./reAnimate-playground
+        run: npm ci
 
       # Step 4: Build static files (adjust based on your build command)
-      - name: Build project
-        run: npm run build:front
+      - name: Build frontend project
+        working-directory: ./reAnimate-playground
+        run: npm run build
 
       # Step 5: Configure GitHub Pages
       - name: Configure GitHub Pages
