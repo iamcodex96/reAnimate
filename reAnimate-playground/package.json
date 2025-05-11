@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "preview": "vite preview",
-    "prepare-index": "cp ./src/index.html ./dist/index.html",
+    "prepare-index": "cp ./index.html ./dist/index.html",
     "build": "npm run prepare-index && vite build"
   },
   "dependencies": {
