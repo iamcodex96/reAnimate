@@ -30,13 +30,7 @@ Thumbs.db
 coverage/
 *.log
 *.out
-*.lock
 *.tmp
 
 # Git-specific
 *.orig
-
-# Package lock files (optional, if you want to force regenerate them)
-# Uncomment these lines if you want to ignore lock files
-# package-lock.json
-# yarn.lock
