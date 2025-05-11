@@ -15,9 +15,9 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: 'dist',  // Output directory for the final build
+    outDir: './dist', // Output directory for the build (dist overwrites itself)
     rollupOptions: {
-      input: './index.html', // Points to the main HTML file
+      input: './dist/index.html', // Set the entry point
     },
   },
 })
