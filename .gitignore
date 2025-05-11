@@ -1,6 +1,8 @@
 # Dependencies
 node_modules/
 
+!reAnimate-playground/*
+
 # TypeScript compiled files
 *.js
 *.jsx
