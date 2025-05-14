@@ -9,7 +9,7 @@ export default defineConfig({
     vue(),
     vueDevTools(),
   ],
-  base: '/playground/',
+  base: '/reAnimate/',
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))
