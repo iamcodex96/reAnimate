@@ -18,7 +18,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      # Step 1: Checkout repository
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Step 2: Set up Node.js
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/* # Use the latest stable LTS version of Node.js
+          cache: 'npm'
+
+      # Step 3: Install root dependencies
+      - name: Install root dependencies
+        run: npm ci # Installs dependencies from package-lock.json in the root
+
+      # Step 4: Run tests
+      - name: Run tests
+        run: npm test # Executes "jest --config jest.config.js" from the root package.json
+
   deploy:
+    needs: test # Ensures deploy job runs only after test job succeeds
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -33,14 +56,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: lts/*    # Use the latest stable LTS version of Node.js
-          cache: 'npm'
+          cache: 'npm' # Cache npm dependencies for the playground
 
-      # Step 3: Install dependencies
+      # Step 3: Install dependencies for the playground
       - name: Install dependencies frontend
         working-directory: ./playground
         run: npm ci
 
-      # Step 4: Build static files (adjust based on your build command)
+      # Step 4: Build static files for the playground
       - name: Build frontend project
         working-directory: ./playground
         run: npm run build
