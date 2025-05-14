@@ -1,0 +1,39 @@
+$dark-primary: #2D1F7C;
+$dark-secondary: #D79B35;
+$dark-success: #28a745;
+$dark-danger: #dc3545;
+$dark-warning: #ffc107;
+$dark-info: #17a2b8;
+$dark-light: #f8f9fa;
+$dark-dark: #343a40;
+
+$light-primary: #5A4CA5;
+$light-secondary: #EFB95C;
+$light-success: #28a745;
+$light-danger: #dc3545;
+$light-warning: #ffc107;
+$light-info: #17a2b8;
+$light-light: #f8f9fa;
+$light-dark: #343a40;
+
+$dark-theme: (
+  "primary": $dark-primary,
+  "secondary": $dark-secondary,
+  "success": $dark-success,
+  "danger": $dark-danger,
+  "warning": $dark-warning,
+  "info": $dark-info,
+  "light": $dark-light,
+  "dark": $dark-dark,
+);
+
+$light-theme: (
+  "primary": $light-primary,
+  "secondary": $light-secondary,
+  "success": $light-success,
+  "danger": $light-danger,
+  "warning": $light-warning,
+  "info": $light-info,
+  "light": $light-light,
+  "dark": $light-dark,
+);

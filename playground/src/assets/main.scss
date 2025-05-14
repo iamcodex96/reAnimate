@@ -1,0 +1,25 @@
+@forward 'reset.scss';
+@use 'sass:map';
+@use 'theme.scss' as themes;
+
+.app-light {
+  --primary: #{map-get(themes.$light-theme, "primary")};
+  --secondary: #{map-get(themes.$light-theme, "secondary")};
+  --success: #{map-get(themes.$light-theme, "success")};
+  --danger: #{map-get(themes.$light-theme, "danger")};
+  --warning: #{map-get(themes.$light-theme, "warning")};
+  --info: #{map-get(themes.$light-theme, "info")};
+  --light: #{map-get(themes.$light-theme, "light")};
+  --dark: #{map-get(themes.$light-theme, "dark")};
+}
+
+.app-dark {
+  --primary: #{map-get(themes.$dark-theme, "primary")};
+  --secondary: #{map-get(themes.$dark-theme, "secondary")};
+  --success: #{map-get(themes.$dark-theme, "success")};
+  --danger: #{map-get(themes.$dark-theme, "danger")};
+  --warning: #{map-get(themes.$dark-theme, "warning")};
+  --info: #{map-get(themes.$dark-theme, "info")};
+  --light: #{map-get(themes.$dark-theme, "light")};
+  --dark: #{map-get(themes.$dark-theme, "dark")};
+}
