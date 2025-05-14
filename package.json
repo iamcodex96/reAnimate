@@ -10,7 +10,8 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "build:ts": "npx tsc",
-    "build:front": "cd playground && npm run build"
+    "build:front": "cd playground && npm run build",
+    "preview:front": "cd playground && npm run preview"
   },
   "keywords": [],
   "author": "Justine Visitacion <carl.justinev@gmail.com",

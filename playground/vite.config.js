@@ -9,7 +9,7 @@ export default defineConfig({
     vue(),
     vueDevTools(),
   ],
-  base: './dist',
+  base: '/playground/',
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))
