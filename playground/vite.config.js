@@ -9,7 +9,7 @@ export default defineConfig({
     vue(),
     vueDevTools(),
   ],
-  base: '/reAnimate/playground/',
+  base: '/reAnimate/', //  Change this to '/your-actual-repository-name/'
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))
