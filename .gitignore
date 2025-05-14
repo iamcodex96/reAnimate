@@ -8,6 +8,8 @@ node_modules/
 *.d.ts
 !vite.config.js
 !main.js
+!jest.config.js
+!jest.setup.js
 
 # Logs
 npm-debug.log*
