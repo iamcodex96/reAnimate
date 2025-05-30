@@ -2,6 +2,13 @@
   "name": "@re-code/animate",
   "version": "0.0.11",
   "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
   "files": [
     "dist"
   ],
@@ -9,10 +16,12 @@
     "test": "jest --config jest.config.js",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "build:ts": "npx tsc",
+    "build:ts": "rollup -c rollup.config.mjs",
     "build:front": "cd playground && npm run build",
-    "preview:front": "cd playground && npm run preview"
+    "preview:front": "cd playground && npm run preview",
+    "build": "npm run build:ts"
   },
+
   "keywords": [],
   "author": "Justine Visitacion <carl.justinev@gmail.com",
   "license": "MIT",
@@ -26,7 +35,11 @@
     "access": "public"
   },
   "devDependencies": {
+    "@rollup/plugin-node-resolve": "^16.0.1",
+    "@rollup/plugin-typescript": "^12.1.2",
     "@types/jest": "^29.5.14",
-    "jest": "^29.7.0"
+    "jest": "^29.7.0",
+    "rollup": "^4.41.1",
+    "rollup-plugin-dts": "^6.2.1"
   }
 }
