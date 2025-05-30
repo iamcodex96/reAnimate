@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@re-code/animate": "^0.0.7",
+    "@re-code/animate": "^0.0.11",
     "sass": "^1.88.0",
     "vue": "^3.5.13"
   },
