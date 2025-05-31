@@ -1,4 +1,4 @@
-import { StaggerOptions, StaggerValue, StaggerDelayFn, StaggerFrom, StaggerDirection } from '../core/stagger.types';
+import { StaggerOptions, StaggerValue, StaggerDelayFn, StaggerFrom, StaggerDirection } from '../types/Stagger.types';
 import { EasingFunction } from '../easings/easings.interface';
 
 /**

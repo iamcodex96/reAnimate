@@ -1,4 +1,4 @@
-import { TimelineOffset } from '../core/types';
+import { TimelineOffset } from '../types/Animation.types';
 
 /**
  * Parse a timeline offset specification

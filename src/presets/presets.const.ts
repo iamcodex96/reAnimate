@@ -3,50 +3,49 @@
  */
 export const PRESETS = {
   /** Fade in animation */
-  FADE_IN: 'fadeIn',
+  fadeIn: 'fadeIn',
   /** Fade out animation */
-  FADE_OUT: 'fadeOut',
+  fadeOut: 'fadeOut',
   /** Slide in animation */
-  SLIDE_IN: 'slideIn',
+  slideIn: 'slideIn',
   /** Slide out animation */
-  SLIDE_OUT: 'slideOut',
+  slideOut: 'slideOut',
   /** Zoom in animation */
-  ZOOM_IN: 'zoomIn',
+  zoomIn: 'zoomIn',
   /** Zoom out animation */
-  ZOOM_OUT: 'zoomOut',
+  zoomOut: 'zoomOut',
   /** Flip animation */
-  FLIP: 'flip',
+  flipIn: 'flipIn',
+  /** Flip animation */
+  flipOut: 'flipOut',
   /** Shake animation */
-  SHAKE: 'shake',
+  shake: 'shake',
   /** Pulse animation */
-  PULSE: 'pulse',
+  pulse: 'pulse',
   /** Bounce animation */
-  BOUNCE: 'bounce',
+  bounce: 'bounce',
   /** Swing animation */
-  SWING: 'swing',
+  swing: 'swing',
   /** Tada animation */
-  TADA: 'tada',
+  tada: 'tada',
   /** Jello animation */
-  JELLO: 'jello',
+  jello: 'jello',
   /** Heartbeat animation */
-  HEARTBEAT: 'heartbeat',
+  heartbeat: 'heartbeat',
   /** Hinge animation */
-  HINGE: 'hinge',
+  hinge: 'hinge',
   /** Roll in animation */
-  ROLL_IN: 'rollIn',
+  rollIn: 'rollIn',
   /** Roll out animation */
-  ROLL_OUT: 'rollOut',
+  rollOut: 'rollOut',
   /** Flash animation */
-  FLASH: 'flash',
+  flash: 'flash',
   /** Rubber band animation */
-  RUBBER_BAND: 'rubberBand',
+  rubberBand: 'rubberBand',
   /** Wobble animation */
-  WOBBLE: 'wobble',
+  wobble: 'wobble',
   /** Light speed in animation */
-  LIGHT_SPEED_IN: 'lightSpeedIn',
+  lightSpeedIn: 'lightSpeedIn',
   /** Light speed out animation */
-  LIGHT_SPEED_OUT: 'lightSpeedOut'
+  lightSpeedOut: 'lightSpeedOut'
 } as const;
-
-// Create a type from the values
-export type PresetName = typeof PRESETS[keyof typeof PRESETS];

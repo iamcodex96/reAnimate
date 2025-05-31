@@ -20,7 +20,19 @@ export interface AnimationOptions {
   
   /** Delay after animation completes */
   endDelay?: number;
+
+  /** Whether the animation should autoplay */
+  autoplay?: boolean;
 }
+
+/**
+ * Timeline options
+ */
+export interface TimelineOptions {
+  /** Whether the timeline should autoplay when created (default: false) */
+  autoplay?: boolean;
+}
+
 
 /**
  * Property animation definition

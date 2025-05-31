@@ -1,6 +1,6 @@
 import { Observable, Subject, BehaviorSubject, animationFrameScheduler, interval } from 'rxjs';
 import { map, takeWhile, finalize } from 'rxjs/operators';
-import { AnimationState } from '../core/types';
+import { AnimationState } from '../types/Animation.types';
 
 /**
  * Create an animation frame observable that emits progress values

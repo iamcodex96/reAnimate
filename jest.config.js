@@ -3,7 +3,7 @@ module.exports = {
     testEnvironment: 'node',
     roots: ['<rootDir>/src'],
     transform: {
-        '^.+\\.tsx?$': 'ts-jest',
+        transform_regex: ['ts-jest', { /* ts-jest config goes here in Jest */ }],
     },
     testMatch: ['**/__tests__/**/*.(ts|tsx)', '**/?(*.)+(spec|test).(ts|tsx)'],
     moduleFileExtensions: ['ts', 'tsx', 'js', 'json', 'node'],
@@ -15,9 +15,7 @@ module.exports = {
     coverageDirectory: 'coverage',
     coverageReporters: ['json', 'lcov', 'text', 'clover'],
     globals: {
-        'ts-jest': {
-            isolatedModules: true,
-        },
+        isolatedModules: true,
     },
     setupFiles: ['<rootDir>/jest.setup.js'],
 };

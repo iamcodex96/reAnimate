@@ -3,23 +3,53 @@
   "version": "0.0.15",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
   "exports": {
     ".": {
       "import": "./dist/index.mjs",
-      "require": "./dist/index.js"
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./core": {
+      "import": "./dist/core/index.mjs",
+      "require": "./dist/core/index.js",
+      "types": "./dist/core/index.d.ts"
+    },
+    "./easings": {
+      "import": "./dist/easings/index.mjs",
+      "require": "./dist/easings/index.js",
+      "types": "./dist/easings/index.d.ts"
+    },
+    "./presets": {
+      "import": "./dist/presets/index.mjs",
+      "require": "./dist/presets/index.js",
+      "types": "./dist/presets/index.d.ts"
+    },
+    "./utils": {
+      "import": "./dist/utils/index.mjs",
+      "require": "./dist/utils/index.js",
+      "types": "./dist/utils/index.d.ts"
+    },
+    "./types": {
+      "import": "./dist/types/index.mjs",
+      "require": "./dist/types/index.js",
+      "types": "./dist/types/index.d.ts"
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "test": "jest --config jest.config.js",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "build:ts": "rollup -c rollup.config.mjs",
     "build:front": "cd playground && npm run build",
     "preview:front": "cd playground && npm run preview",
-    "build": "npm run build:ts"
+    "build": "yarn build:js && yarn build:types",
+    "build:js": "rollup -c",
+    "build:types": "tsc --emitDeclarationOnly"
   },
 
   "keywords": [],

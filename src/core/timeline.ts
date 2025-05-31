@@ -2,9 +2,8 @@ import { Observable, Subscription } from 'rxjs';
 import { tap, finalize } from 'rxjs/operators';
 
 import { Animation } from './animation';
-import { AnimationDefinition, TimelineOffset, AnimationState } from './types';
-import { createAnimationObservable, createAnimationState } from '../utils/rxjs.util';
-import { parseTimelineOffset } from '../utils/animation.util';
+import { AnimationDefinition, TimelineOffset, AnimationState } from '../types/Animation.types';
+import { createAnimationObservable, createAnimationState, parseTimelineOffset } from '../utils';
 
 interface TimelineItem {
   animation: Animation;
@@ -19,7 +18,22 @@ export class Timeline {
   private startTime = 0;
   private pausedTime = 0;
   private _duration = 0;
-  
+  private _autoplay: boolean;
+
+  /**
+   * Create a new timeline
+   * @param options - Optional timeline configuration
+   */
+  constructor(options: { autoplay?: boolean } = {}) {
+    this._autoplay = options.autoplay ?? false;
+
+    // If autoplay is enabled, start the timeline after construction
+    if (this._autoplay) {
+      // Use setTimeout to ensure constructor finishes before play() is called
+      setTimeout(() => this.play(), 0);
+    }
+  }
+
   /**
    * Add an animation to the timeline
    * @param animation - Animation or animation definition to add
@@ -27,29 +41,29 @@ export class Timeline {
    * @returns This timeline for chaining
    */
   add(
-    animation: Animation | AnimationDefinition, 
-    timeOffset: TimelineOffset = '+=0'
+      animation: Animation | AnimationDefinition,
+      timeOffset: TimelineOffset = '+=0'
   ): Timeline {
     // Convert AnimationDefinition to Animation if needed
-    const anim = animation instanceof Animation ? 
-      animation : new Animation(animation as AnimationDefinition);
-    
+    const anim = animation instanceof Animation ?
+        animation : new Animation(animation as AnimationDefinition);
+
     // Calculate offset based on last animation or absolute time
     const lastItem = this.animations[this.animations.length - 1];
-    const lastEndTime = lastItem ? 
-      lastItem.timeOffset + lastItem.animation.duration : 0;
-    
+    const lastEndTime = lastItem ?
+        lastItem.timeOffset + lastItem.animation.duration : 0;
+
     const offset = parseTimelineOffset(timeOffset, lastEndTime);
-    
+
     // Add to animations list
     this.animations.push({ animation: anim, timeOffset: offset });
-    
+
     // Update total timeline duration
     this._duration = Math.max(this._duration, offset + anim.duration);
-    
+
     return this;
   }
-  
+
   /**
    * Play the timeline
    * @returns This timeline for chaining
@@ -205,5 +219,57 @@ export class Timeline {
         animation.seek(localProgress);
       }
     });
+  }
+  /**
+   * Convert the timeline to a Promise that resolves when the timeline completes
+   * @returns Promise that resolves when the timeline completes or rejects on error
+   */
+  toPromise(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      // Create a new subscription to the state observable
+      const subscription = this.state().subscribe({
+        next: (state) => {
+          if (state === 'completed') {
+            subscription.unsubscribe();
+            resolve();
+          }
+        },
+        error: (err) => {
+          subscription.unsubscribe();
+          reject(err);
+        }
+      });
+
+      // If the timeline is not running, start it
+      if (this.animationState.state$.value !== 'running') {
+        this.play();
+      }
+    });
+  }
+
+  /**
+   * Make the Timeline class "thenable" to support Promise-like usage
+   */
+  then<TResult1 = void, TResult2 = never>(
+      onFulfilled?: ((value: void) => TResult1 | PromiseLike<TResult1>) | undefined | null,
+      onRejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | undefined | null
+  ): Promise<TResult1 | TResult2> {
+    return this.toPromise().then(onFulfilled, onRejected);
+  }
+
+  /**
+   * Add catch method for Promise-like error handling
+   */
+  catch<TResult = never>(
+      onRejected?: ((reason: any) => TResult | PromiseLike<TResult>) | undefined | null
+  ): Promise<void | TResult> {
+    return this.toPromise().catch(onRejected);
+  }
+
+  /**
+   * Add finally method for Promise-like cleanup
+   */
+  finally(onFinally?: (() => void) | undefined | null): Promise<void> {
+    return this.toPromise().finally(onFinally);
   }
 }

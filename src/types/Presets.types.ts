@@ -1,6 +1,6 @@
-import { AnimationDefinition, AnimationOptions } from '../core/types';
 import { EasingFunction } from '../easings/easings.interface';
-import easings from '../easings/easings.const';
+import { PRESETS } from "../presets/presets.const";
+import { Timeline, Animation } from "../core";
 
 /**
  * Configuration options for animation presets
@@ -36,3 +36,19 @@ export interface PresetConfig {
   /** Whether the animation should autoplay */
   autoplay?: boolean;
 }
+
+export type PresetName = keyof typeof PRESETS;
+
+/**
+ * Function signature for animation presets
+ */
+export type PresetFunction = (target: any, config?: PresetConfig) => Animation | Timeline;
+
+/**
+ * Collection of animation presets
+ */
+export interface Presets {
+  [name: string]: PresetFunction;
+}
+
+

@@ -1,4 +1,4 @@
-import { BehaviorSubject, interval, animationFrameScheduler } from 'rxjs';
+import { interval, animationFrameScheduler, BehaviorSubject } from 'rxjs';
 
 function isFunction(value) {
     return typeof value === 'function';
@@ -875,18 +875,182 @@ function createStaggeredAnimations(targets, animationFactory, staggerDelay) {
     });
 }
 
+/**
+ * Parse property animation value into a normalized format
+ * @param value - The property animation value in any supported format
+ * @param currentValue - Current value of the property (for implicit from values)
+ * @returns Normalized property animation object
+ */
+function parsePropertyAnimation(value, currentValue = undefined) {
+    // Case 1: [from, to] array format
+    if (Array.isArray(value) && value.length === 2) {
+        return { from: value[0], to: value[1] };
+    }
+    // Case 2: Single value format (implicit from)
+    if (typeof value !== 'object' || value === null) {
+        return { from: currentValue, to: value };
+    }
+    // Case 3: Object format with from/to properties
+    if ('from' in value && 'to' in value) {
+        const result = {
+            from: value.from,
+            to: value.to
+        };
+        if ('steps' in value && Array.isArray(value.steps)) {
+            result.steps = value.steps;
+        }
+        return result;
+    }
+    // Case 4: Object format with value and custom timing
+    if ('value' in value) {
+        const result = {
+            from: currentValue,
+            to: value.value
+        };
+        if ('duration' in value && typeof value.duration === 'number') {
+            result.duration = value.duration;
+        }
+        if ('delay' in value && typeof value.delay === 'number') {
+            result.delay = value.delay;
+        }
+        return result;
+    }
+    // Default: treat as to-value
+    return { from: currentValue, to: value };
+}
+/**
+ * Parse CSS units from string values
+ * @param value - String value potentially containing units
+ * @returns Object with numeric value and unit
+ */
+function parseCssValue(value) {
+    const match = String(value).match(/^([-+]?[\d.]+)([a-z%]*)$/i);
+    if (match) {
+        return {
+            value: parseFloat(match[1]),
+            unit: match[2] || ''
+        };
+    }
+    return {
+        value: 0,
+        unit: ''
+    };
+}
+/**
+ * Detect if a value is a valid color
+ * @param value - Value to check
+ * @returns Boolean indicating if the value is a color
+ */
+function isColor(value) {
+    if (typeof value !== 'string')
+        return false;
+    // Check for hex, rgb, rgba, hsl, hsla
+    return (/^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value) ||
+        /^rgba?\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*(?:,\s*[\d.]+\s*)?\)$/.test(value) ||
+        /^hsla?\(\s*\d+\s*,\s*\d+%?\s*,\s*\d+%?\s*(?:,\s*[\d.]+\s*)?\)$/.test(value));
+}
+/**
+ * Detect if a value is a transform function
+ * @param value - Value to check
+ * @returns Boolean indicating if the value is a transform
+ */
+function isTransform(value) {
+    if (typeof value !== 'string')
+        return false;
+    // Check for common transform functions
+    return (/^(translate|rotate|scale|skew|matrix|perspective)/.test(value) ||
+        value === 'none');
+}
+/**
+ * Get the current computed value of a property on an element
+ * @param target - Target element
+ * @param property - CSS property name
+ * @returns Current value of the property
+ */
+function getCurrentValue(target, property) {
+    // For DOM elements
+    if (target instanceof HTMLElement || target instanceof SVGElement) {
+        // Get computed style for CSS properties
+        if (property in target.style || isCustomCssProperty(property)) {
+            const computedStyle = getComputedStyle(target);
+            return computedStyle[property] || null;
+        }
+        // For transform properties, extract from the transform matrix
+        if (isTransformProperty(property)) {
+            return getComputedTransformValue();
+        }
+        // For attributes
+        if (target.hasAttribute && target.hasAttribute(property)) {
+            return target.getAttribute(property);
+        }
+    }
+    // For regular objects
+    if (property in target) {
+        return target[property];
+    }
+    // Default: return undefined (will be replaced with sensible defaults later)
+    return undefined;
+}
+/**
+ * Check if a property is a CSS custom property
+ */
+function isCustomCssProperty(property) {
+    return property.startsWith('--');
+}
+/**
+ * Check if a property is a transform property
+ */
+function isTransformProperty(property) {
+    const transformProps = [
+        'translateX', 'translateY', 'translateZ', 'translate',
+        'rotateX', 'rotateY', 'rotateZ', 'rotate',
+        'scaleX', 'scaleY', 'scaleZ', 'scale',
+        'skewX', 'skewY', 'skew'
+    ];
+    return transformProps.includes(property);
+}
+/**
+ * Get computed transform value for an element
+ * Simplified implementation - in a real library this would be more comprehensive
+ */
+function getComputedTransformValue(element, property) {
+    // In a full implementation, this would extract specific transform values
+    // from the computed transform matrix
+    return '0';
+}
+/**
+ * Get sensible default value for a property if current value is unknown
+ */
+function getDefaultValue(property) {
+    // Common defaults for various properties
+    const defaults = {
+        opacity: 1,
+        rotate: '0deg',
+        scale: 1,
+        translateX: '0px',
+        translateY: '0px',
+        translateZ: '0px',
+        x: 0,
+        y: 0,
+        z: 0
+    };
+    return property in defaults ? defaults[property] : 0;
+}
+
 class Animation {
-    definition;
-    animationState = createAnimationState();
-    animationSubscription = null;
-    startTime = 0;
-    pausedTime = 0;
     /**
      * Create a new animation
      * @param definition - Animation definition
      */
     constructor(definition) {
         this.definition = definition;
+        this.animationState = createAnimationState();
+        this.animationSubscription = null;
+        this.startTime = 0;
+        this.pausedTime = 0;
+        if (this.definition.options.autoplay) {
+            setTimeout(() => this.play(), 0);
+        }
     }
     /**
      * Play the animation
@@ -997,11 +1161,42 @@ class Animation {
         const { target, properties } = this.definition;
         // Calculate interpolated values for all properties
         const interpolatedValues = {};
-        Object.entries(properties).forEach(([prop, [from, to]]) => {
-            interpolatedValues[prop] = interpolate(from, to, progress);
+        Object.entries(properties).forEach(([prop, propAnimation]) => {
+            // Get current value if needed for implicit "from" values
+            const currentValue = getCurrentValue(target, prop) || getDefaultValue(prop);
+            // Parse the property animation into a normalized format
+            const normalized = parsePropertyAnimation(propAnimation, currentValue);
+            // Apply property-specific duration/delay if defined
+            const propertyProgress = progress;
+            // Handle multi-step animations if defined
+            if (normalized.steps && normalized.steps.length > 0) {
+                interpolatedValues[prop] = this.interpolateSteps([normalized.from, ...normalized.steps, normalized.to], propertyProgress);
+            }
+            else {
+                // Standard from-to interpolation
+                interpolatedValues[prop] = interpolate(normalized.from, normalized.to, propertyProgress);
+            }
         });
         // Update target with all interpolated values
         updateTargetProperties(target, interpolatedValues);
+    }
+    /**
+     * Interpolate through multiple steps based on progress
+     * @param steps - Array of values including from and to
+     * @param progress - Progress value (0 to 1)
+     * @returns Interpolated value
+     */
+    interpolateSteps(steps, progress) {
+        if (steps.length < 2)
+            return steps[0];
+        // Calculate which segment we're in
+        const segmentCount = steps.length - 1;
+        const segmentSize = 1 / segmentCount;
+        const segmentIndex = Math.min(Math.floor(progress / segmentSize), segmentCount - 1);
+        // Calculate local progress within this segment
+        const segmentProgress = (progress - segmentIndex * segmentSize) / segmentSize;
+        // Interpolate between segment start and end
+        return interpolate(steps[segmentIndex], steps[segmentIndex + 1], segmentProgress);
     }
     /**
      * Create staggered animations for multiple targets
@@ -1021,6 +1216,49 @@ class Animation {
             properties,
             options: { ...options }
         }), staggerFn);
+    }
+    /**
+     * Convert the animation to a Promise that resolves when the animation completes
+     * @returns Promise that resolves when the animation completes or rejects on error
+     */
+    toPromise() {
+        return new Promise((resolve, reject) => {
+            // Create a new subscription to the state observable
+            const subscription = this.state().subscribe({
+                next: (state) => {
+                    if (state === 'completed') {
+                        subscription.unsubscribe();
+                        resolve();
+                    }
+                },
+                error: (err) => {
+                    subscription.unsubscribe();
+                    reject(err);
+                }
+            });
+            // If the animation is not running, start it
+            if (this.animationState.state$.value !== 'running') {
+                this.play();
+            }
+        });
+    }
+    /**
+     * Make the Animation class "thenable" to support Promise-like usage
+     */
+    then(onFulfilled, onRejected) {
+        return this.toPromise().then(onFulfilled, onRejected);
+    }
+    /**
+     * Add catch method for Promise-like error handling
+     */
+    catch(onRejected) {
+        return this.toPromise().catch(onRejected);
+    }
+    /**
+     * Add finally method for Promise-like cleanup
+     */
+    finally(onFinally) {
+        return this.toPromise().finally(onFinally);
     }
 }
 
@@ -1044,14 +1282,50 @@ function parseTimelineOffset(offset, currentTime) {
     // Default: treat as absolute time
     return parseFloat(offset) || 0;
 }
+/**
+ * Get the end time of an animation based on its options
+ * @param duration - Base duration
+ * @param delay - Start delay
+ * @param endDelay - End delay
+ * @returns Total animation time
+ */
+function getAnimationEndTime(duration, delay = 0, endDelay = 0) {
+    return duration + delay + endDelay;
+}
+
+/**
+ *
+ * @param element Target HTMLElement
+ * @param property Target CSSProperty
+ * @param value Target value or state
+ */
+const styleBinder = (element, property) => {
+    return (value) => {
+        element.style[property] =
+            typeof value === 'number' ? `${value}px` : value;
+    };
+};
 
 class Timeline {
-    animations = [];
-    animationState = createAnimationState();
-    timelineSubscription = null;
-    startTime = 0;
-    pausedTime = 0;
-    _duration = 0;
+    /**
+     * Create a new timeline
+     * @param options - Optional timeline configuration
+     */
+    constructor(options = {}) {
+        var _a;
+        this.animations = [];
+        this.animationState = createAnimationState();
+        this.timelineSubscription = null;
+        this.startTime = 0;
+        this.pausedTime = 0;
+        this._duration = 0;
+        this._autoplay = (_a = options.autoplay) !== null && _a !== void 0 ? _a : false;
+        // If autoplay is enabled, start the timeline after construction
+        if (this._autoplay) {
+            // Use setTimeout to ensure constructor finishes before play() is called
+            setTimeout(() => this.play(), 0);
+        }
+    }
     /**
      * Add an animation to the timeline
      * @param animation - Animation or animation definition to add
@@ -1206,7 +1480,66 @@ class Timeline {
             }
         });
     }
+    /**
+     * Convert the timeline to a Promise that resolves when the timeline completes
+     * @returns Promise that resolves when the timeline completes or rejects on error
+     */
+    toPromise() {
+        return new Promise((resolve, reject) => {
+            // Create a new subscription to the state observable
+            const subscription = this.state().subscribe({
+                next: (state) => {
+                    if (state === 'completed') {
+                        subscription.unsubscribe();
+                        resolve();
+                    }
+                },
+                error: (err) => {
+                    subscription.unsubscribe();
+                    reject(err);
+                }
+            });
+            // If the timeline is not running, start it
+            if (this.animationState.state$.value !== 'running') {
+                this.play();
+            }
+        });
+    }
+    /**
+     * Make the Timeline class "thenable" to support Promise-like usage
+     */
+    then(onFulfilled, onRejected) {
+        return this.toPromise().then(onFulfilled, onRejected);
+    }
+    /**
+     * Add catch method for Promise-like error handling
+     */
+    catch(onRejected) {
+        return this.toPromise().catch(onRejected);
+    }
+    /**
+     * Add finally method for Promise-like cleanup
+     */
+    finally(onFinally) {
+        return this.toPromise().finally(onFinally);
+    }
 }
+
+var Animation_types = /*#__PURE__*/Object.freeze({
+    __proto__: null
+});
+
+var PropertyAnimation_types = /*#__PURE__*/Object.freeze({
+    __proto__: null
+});
+
+var Presets_types = /*#__PURE__*/Object.freeze({
+    __proto__: null
+});
+
+var Stagger_types = /*#__PURE__*/Object.freeze({
+    __proto__: null
+});
 
 const BASE_EASING = {
     /**
@@ -1751,6 +2084,58 @@ const easings = (config) => {
     }), {});
 };
 
+/**
+ * All available animation presets
+ */
+const PRESETS = {
+    /** Fade in animation */
+    fadeIn: 'fadeIn',
+    /** Fade out animation */
+    fadeOut: 'fadeOut',
+    /** Slide in animation */
+    slideIn: 'slideIn',
+    /** Slide out animation */
+    slideOut: 'slideOut',
+    /** Zoom in animation */
+    zoomIn: 'zoomIn',
+    /** Zoom out animation */
+    zoomOut: 'zoomOut',
+    /** Flip animation */
+    flipIn: 'flipIn',
+    /** Flip animation */
+    flipOut: 'flipOut',
+    /** Shake animation */
+    shake: 'shake',
+    /** Pulse animation */
+    pulse: 'pulse',
+    /** Bounce animation */
+    bounce: 'bounce',
+    /** Swing animation */
+    swing: 'swing',
+    /** Tada animation */
+    tada: 'tada',
+    /** Jello animation */
+    jello: 'jello',
+    /** Heartbeat animation */
+    heartbeat: 'heartbeat',
+    /** Hinge animation */
+    hinge: 'hinge',
+    /** Roll in animation */
+    rollIn: 'rollIn',
+    /** Roll out animation */
+    rollOut: 'rollOut',
+    /** Flash animation */
+    flash: 'flash',
+    /** Rubber band animation */
+    rubberBand: 'rubberBand',
+    /** Wobble animation */
+    wobble: 'wobble',
+    /** Light speed in animation */
+    lightSpeedIn: 'lightSpeedIn',
+    /** Light speed out animation */
+    lightSpeedOut: 'lightSpeedOut'
+};
+
 // src/presets/presets.ts
 /**
  * Creates default animation options
@@ -1759,7 +2144,8 @@ function createDefaultOptions(config) {
     return {
         duration: config.duration || 500,
         easing: config.easing || BASE_EASING.easeOutQuint,
-        delay: config.delay || 0
+        delay: config.delay || 0,
+        autoplay: config.autoplay || false,
     };
 }
 /**
@@ -1771,929 +2157,930 @@ function mergeProperties(baseProperties, extraProperties) {
     return { ...baseProperties, ...extraProperties };
 }
 /**
+ * Fade in animation
+ * @param target - Element to animate
+ * @param config - Animation configuration
+ * @returns Animation instance or definition
+ */
+const fadeIn = (target, config = {}) => {
+    return new Animation({
+        target,
+        properties: {
+            opacity: [0, 1]
+        },
+        options: createDefaultOptions(config),
+    });
+};
+/**
+ * Fade out animation
+ * @param target - Element to animate
+ * @param config - Animation configuration
+ * @returns Animation instance or definition
+ */
+const fadeOut = (target, config = {}) => {
+    return new Animation({
+        target,
+        properties: {
+            opacity: [0, 1]
+        },
+        options: createDefaultOptions(config),
+    });
+};
+/**
+ * Slide in animation
+ * @param target - Element to animate
+ * @param config - Animation configuration
+ * @returns Animation instance or definition
+ */
+const slideIn = (target, config = {}) => {
+    const direction = config.direction || 'left';
+    const distance = config.distance || '100px';
+    const transforms = {
+        left: [`translateX(-${distance})`, 'translateX(0)'],
+        right: [`translateX(${distance})`, 'translateX(0)'],
+        up: [`translateY(-${distance})`, 'translateY(0)'],
+        down: [`translateY(${distance})`, 'translateY(0)']
+    };
+    return new Animation({
+        target,
+        properties: mergeProperties({
+            transform: transforms[direction],
+            opacity: [0, 1]
+        }, config.extraProperties),
+        options: createDefaultOptions(config),
+    });
+};
+/**
+ * Slide out animation
+ * @param target - Element to animate
+ * @param config - Animation configuration
+ * @returns Animation instance or definition
+ */
+const slideOut = (target, config = {}) => {
+    const direction = config.direction || 'left';
+    const distance = config.distance || '100px';
+    const transforms = {
+        left: ['translateX(0)', `translateX(-${distance})`],
+        right: ['translateX(0)', `translateX(${distance})`],
+        up: ['translateY(0)', `translateY(-${distance})`],
+        down: ['translateY(0)', `translateY(${distance})`]
+    };
+    return new Animation({
+        target,
+        properties: mergeProperties({
+            transform: transforms[direction],
+            opacity: [1, 0]
+        }, config.extraProperties),
+        options: createDefaultOptions(config),
+    });
+};
+/**
+ * zoom in animation
+ * @param target - Element to animate
+ * @param config - Animation configuration: scale, duration, easing, autoplay, distance,
+ * @returns Animation instance
+ */
+const zoomIn = (target, config = {}) => {
+    const scale = config.scale || 0.5;
+    return new Animation({
+        target,
+        properties: mergeProperties({
+            transform: [`scale(${scale})`, 'scale(1)'],
+            opacity: [0, 1]
+        }, config.extraProperties),
+        options: createDefaultOptions(config),
+    });
+};
+/**
+ * zoom out animation
+ * @param target - Element to animate
+ * @param config - Animation configuration: scale, duration, easing, autoplay, distance,
+ * @returns Animation instance
+ */
+const zoomOut = (target, config = {}) => {
+    const scale = config.scale || 0.5;
+    return new Animation({
+        target,
+        properties: mergeProperties({
+            transform: ['scale(1)', `scale(${scale})`],
+            opacity: [1, 0]
+        }, config.extraProperties),
+        options: createDefaultOptions(config),
+    });
+};
+/**
+ * flip in animation
+ * @param target - Element to animate
+ * @param config - Animation configuration: direction, duration, easing, autoplay,
+ * @returns Animation instance
+ */
+const flipIn = (target, config = {}) => {
+    const direction = config.direction || 'x';
+    const axis = direction === 'x' ? 'Y' : 'X';
+    return new Animation({
+        target,
+        properties: mergeProperties({
+            transform: [`perspective(400px) rotate${axis}(90deg)`, `perspective(400px) rotate${axis}(0deg)`],
+            opacity: [0, 1]
+        }, config.extraProperties),
+        options: createDefaultOptions(config),
+    });
+};
+/**
+ * flip out animation
+ * @param target - Element to animate
+ * @param config - Animation configuration: direction, duration, easing, autoplay,
+ * @returns Animation instance
+ */
+const flipOut = (target, config = {}) => {
+    const direction = config.direction || 'x';
+    const axis = direction === 'x' ? 'Y' : 'X';
+    return new Animation({
+        target,
+        properties: mergeProperties({
+            transform: [`perspective(400px) rotate${axis}(0deg)`, `perspective(400px) rotate${axis}(90deg)`],
+            opacity: [1, 0]
+        }, config.extraProperties),
+        options: createDefaultOptions(config),
+    });
+};
+/**
+ * Shake animation
+ * @param target - Element to animate
+ * @param config - Animation configuration: intensity, duration, easing, autoplay, distance
+ * @returns Timeline
+ */
+const shake = (target, config = {}) => {
+    const intensity = config.intensity || 1;
+    const distance = config.distance || '10px';
+    const shakeDistance = `${parseInt(distance) * intensity}px`;
+    const shakeTimeline = new Timeline({ autoplay: config.autoplay });
+    shakeTimeline.add({
+        target,
+        properties: {
+            transform: ['translateX(0)', `translateX(-${shakeDistance})`]
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 500) / 6,
+        }
+    });
+    shakeTimeline.add({
+        target,
+        properties: {
+            transform: [`translateX(-${shakeDistance})`, `translateX(${shakeDistance})`]
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 500) / 6,
+        }
+    }, '+=0');
+    shakeTimeline.add({
+        target,
+        properties: {
+            transform: [`translateX(${shakeDistance})`, `translateX(-${shakeDistance})`]
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 500) / 6,
+        }
+    }, '+=0');
+    shakeTimeline.add({
+        target,
+        properties: {
+            transform: [`translateX(-${shakeDistance})`, `translateX(${shakeDistance})`]
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 500) / 6,
+        }
+    }, '+=0');
+    shakeTimeline.add({
+        target,
+        properties: {
+            transform: [`translateX(${shakeDistance})`, `translateX(-${shakeDistance})`]
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 500) / 6,
+        }
+    }, '+=0');
+    shakeTimeline.add({
+        target,
+        properties: {
+            transform: [`translateX(-${shakeDistance})`, 'translateX(0)']
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 500) / 6,
+        }
+    }, '+=0');
+    return shakeTimeline;
+};
+/**
+ * Pulse animation
+ * @param target - Element to animate
+ * @param config - Animation configuration: intensity, duration, easing, autoplay
+ * @returns Timeline
+ */
+const pulse = (target, config = {}) => {
+    const intensity = config.intensity || 1;
+    const scale = 1 + (0.1 * intensity);
+    const pulseTimeline = new Timeline({ autoplay: config.autoplay });
+    pulseTimeline.add({
+        target,
+        properties: {
+            transform: ['scale(1)', `scale(${scale})`]
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 500) / 2,
+        }
+    });
+    pulseTimeline.add({
+        target,
+        properties: {
+            transform: [`scale(${scale})`, 'scale(1)']
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 500) / 2,
+        }
+    }, '+=0');
+    return pulseTimeline;
+};
+/**
+ * Bounce animation
+ * @param target - Element to animate
+ * @param config - Animation configuration: intensity, duration, easing, autoplay, distance
+ * @returns Timeline
+ */
+const bounce = (target, config = {}) => {
+    const intensity = config.intensity || 1;
+    const distance = config.distance || '30px';
+    const bounceHeight = `${parseInt(distance) * intensity}px`;
+    const bounceTimeline = new Timeline({ autoplay: config.autoplay });
+    bounceTimeline.add({
+        target,
+        properties: {
+            transform: ['translateY(0)', `translateY(${bounceHeight})`]
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 800) * 0.25,
+        }
+    });
+    bounceTimeline.add({
+        target,
+        properties: {
+            transform: [`translateY(${bounceHeight})`, 'translateY(0)']
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 800) * 0.25,
+        }
+    });
+    // Bounce up
+    bounceTimeline.add({
+        target,
+        properties: {
+            transform: [`translateY(${bounceHeight})`, 'translateY(0)']
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 800) * 0.25,
+        }
+    }, '+=0');
+    // Small bounce down
+    bounceTimeline.add({
+        target,
+        properties: {
+            transform: ['translateY(0)', `translateY(${bounceHeight}/2)`]
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 800) * 0.15,
+        }
+    }, '+=0');
+    // Small bounce up
+    bounceTimeline.add({
+        target,
+        properties: {
+            transform: [`translateY(${bounceHeight}/2)`, 'translateY(0)']
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 800) * 0.15,
+        }
+    }, '+=0');
+    // Tiny bounce down
+    bounceTimeline.add({
+        target,
+        properties: {
+            transform: ['translateY(0)', `translateY(${bounceHeight}/4)`]
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 800) * 0.1,
+        }
+    }, '+=0');
+    // Tiny bounce up
+    bounceTimeline.add({
+        target,
+        properties: {
+            transform: [`translateY(${bounceHeight}/4)`, 'translateY(0)']
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 800) * 0.1,
+        }
+    }, '+=0');
+    return bounceTimeline;
+};
+/**
+ * Swing animation
+ * @param target - Element to animate
+ * @param config - Animation configuration: intensity, duration, easing, autoplay
+ * @returns Timeline
+ */
+const swing = (target, config = {}) => {
+    const intensity = config.intensity || 1;
+    const rotation = (config.rotation || 15) * intensity;
+    const swingTimeline = new Timeline({ autoplay: config.autoplay });
+    swingTimeline.add({
+        target,
+        properties: {
+            transform: ['rotate(0deg)', `rotate(${rotation}deg)`]
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 800) * 0.2,
+        }
+    });
+    swingTimeline.add({
+        target,
+        properties: {
+            transform: [`rotate(${rotation}deg)`, `rotate(-${rotation * 0.8}deg)`]
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 800) * 0.2,
+        }
+    }, '+=0');
+    swingTimeline.add({
+        target,
+        properties: {
+            transform: [`rotate(-${rotation * 0.8}deg)`, `rotate(${rotation * 0.6}deg)`]
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 800) * 0.2,
+        }
+    }, '+=0');
+    swingTimeline.add({
+        target,
+        properties: {
+            transform: [`rotate(${rotation * 0.6}deg)`, `rotate(-${rotation * 0.4}deg)`]
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 800) * 0.2,
+        }
+    }, '+=0');
+    swingTimeline.add({
+        target,
+        properties: {
+            transform: [`rotate(-${rotation * 0.4}deg)`, 'rotate(0deg)']
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 800) * 0.2,
+        }
+    }, '+=0');
+    return swingTimeline;
+};
+/**
+ * Tada animation (attention seeker)
+ * @param target - Element to animate
+ * @param config - Animation configuration: intensity, duration, easing, autoplay
+ * @returns Timeline
+ */
+const tada = (target, config = {}) => {
+    const intensity = config.intensity || 1;
+    const scale1 = 1 - (0.1 * intensity);
+    const scale2 = 1 + (0.1 * intensity);
+    const rotation = (3 * intensity);
+    const tadaTimeline = new Timeline({ autoplay: config.autoplay });
+    tadaTimeline.add({
+        target,
+        properties: {
+            transform: ['scale(1) rotate(0deg)', `scale(${scale1}) rotate(0deg)`]
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 800) * 0.1,
+        }
+    });
+    // Scale up with rotation
+    tadaTimeline.add({
+        target,
+        properties: {
+            transform: [`scale(${scale1}) rotate(0deg)`, `scale(${scale2}) rotate(${rotation}deg)`]
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 800) * 0.1,
+        }
+    }, '+=0');
+    // Rotation sequence
+    for (let i = 0; i < 5; i++) {
+        const fromRotation = i % 2 === 0 ? rotation : -rotation;
+        const toRotation = i % 2 === 0 ? -rotation : rotation;
+        tadaTimeline.add({
+            target,
+            properties: {
+                transform: [`scale(${scale2}) rotate(${fromRotation}deg)`, `scale(${scale2}) rotate(${toRotation}deg)`]
+            },
+            options: {
+                ...createDefaultOptions(config),
+                duration: (config.duration || 800) * 0.1,
+            }
+        }, '+=0');
+    }
+    // Return to normal
+    tadaTimeline.add({
+        target,
+        properties: {
+            transform: [`scale(${scale2}) rotate(${rotation}deg)`, 'scale(1) rotate(0deg)']
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 800) * 0.1,
+        }
+    }, '+=0');
+    return tadaTimeline;
+};
+/**
+ * Jello animation (wiggle effect)
+ * @param target - Element to animate
+ * @param config - Animation configuration: intensity, duration, easing, autoplay
+ * @returns Timeline
+ */
+const jello = (target, config = {}) => {
+    const intensity = config.intensity || 1;
+    const jelloTimeline = new Timeline({ autoplay: config.autoplay });
+    const skews = [
+        [12.5, 12.5],
+        [-6.25, -6.25],
+        [3.125, 3.125],
+        [-1.5625, -1.5625],
+        [0.78125, 0.78125],
+        [-0.390625, -0.390625]
+    ];
+    jelloTimeline.add({
+        target,
+        properties: {
+            transform: ['skewX(0deg) skewY(0deg)', `skewX(-12.5deg * ${intensity}) skewY(-12.5deg * ${intensity})`]
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 1000) * 0.15,
+        }
+    });
+    skews.forEach((skew, index) => {
+        const [skewX, skewY] = skew.map(s => s * intensity);
+        jelloTimeline.add({
+            target,
+            properties: {
+                transform: [
+                    `skewX(${-skewX}deg) skewY(${-skewY}deg)`,
+                    `skewX(${skewX}deg) skewY(${skewY}deg)`
+                ]
+            },
+            options: {
+                ...createDefaultOptions(config),
+                duration: (config.duration || 1000) * 0.1,
+            }
+        }, '+=0');
+    });
+    jelloTimeline.add({
+        target,
+        properties: {
+            transform: [`skewX(${skews[skews.length - 1][0] * intensity}deg) skewY(${skews[skews.length - 1][1] * intensity}deg)`, 'skewX(0deg) skewY(0deg)']
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 1000) * 0.05,
+        }
+    }, '+=0');
+    return jelloTimeline;
+};
+/**
+ * Heartbeat animation
+ * @param target - Element to animate
+ * @param config - Animation configuration
+ * @returns Timeline
+ */
+const heartbeat = (target, config = {}) => {
+    const intensity = config.intensity || 1;
+    const scale1 = 1 + (0.14 * intensity);
+    const scale2 = 1 + (0.30 * intensity);
+    const heartbeatTimeline = new Timeline({ autoplay: config.autoplay });
+    heartbeatTimeline.add({
+        target,
+        properties: {
+            transform: ['scale(1)', `scale(${scale1})`]
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 1500) * 0.14,
+        }
+    });
+    heartbeatTimeline.add({
+        target,
+        properties: {
+            transform: [`scale(${scale1})`, 'scale(1)']
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 1500) * 0.14,
+        }
+    }, '+=0');
+    // Slight pause
+    heartbeatTimeline.add({
+        target,
+        properties: {
+            transform: ['scale(1)', 'scale(1)']
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 1500) * 0.14,
+        }
+    }, '+=0');
+    // Second stronger beat
+    heartbeatTimeline.add({
+        target,
+        properties: {
+            transform: ['scale(1)', `scale(${scale2})`]
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 1500) * 0.14,
+        }
+    }, '+=0');
+    heartbeatTimeline.add({
+        target,
+        properties: {
+            transform: [`scale(${scale2})`, 'scale(1)']
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 1500) * 0.14,
+        }
+    }, '+=0');
+    // Rest period
+    heartbeatTimeline.add({
+        target,
+        properties: {
+            transform: ['scale(1)', 'scale(1)']
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 1500) * 0.3,
+        }
+    }, '+=0');
+    return heartbeatTimeline;
+};
+/**
+ * Hinge animation (fall and rotate out)
+ * @param target - Element to animate
+ * @param config - Animation configuration: duration, autoplay
+ * @returns Animation instance or definition
+ */
+const hinge = (target, config = {}) => {
+    const duration = config.duration || 2000;
+    const hingeTimeline = new Timeline({ autoplay: config.autoplay });
+    if (target instanceof HTMLElement) {
+        target.style.transformOrigin = 'top left';
+    }
+    hingeTimeline.add({
+        target,
+        properties: {
+            transform: ['rotate(0deg)', 'rotate(80deg)'],
+            opacity: [1, 1]
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: duration * 0.2,
+        }
+    });
+    hingeTimeline.add({
+        target,
+        properties: {
+            transform: ['rotate(80deg)', 'rotate(60deg)']
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: duration * 0.2,
+        }
+    }, '+=0');
+    hingeTimeline.add({
+        target,
+        properties: {
+            transform: ['rotate(60deg)', 'rotate(80deg)']
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: duration * 0.2,
+        }
+    }, '+=0');
+    hingeTimeline.add({
+        target,
+        properties: {
+            transform: ['rotate(80deg)', 'translateY(700px) rotate(80deg)'],
+            opacity: [1, 0]
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: duration * 0.4,
+        }
+    }, '+=0');
+    return hingeTimeline;
+};
+/**
+ * Roll in animation
+ * @param target - Element to animate
+ * @param config - Animation configuration: duration, easing, extraProperties
+ * @returns Animation instance or definition
+ */
+const rollIn = (target, config = {}) => {
+    return new Animation({
+        target,
+        properties: mergeProperties({
+            transform: ['translateX(-100%) rotate(-120deg)', 'translateX(0) rotate(0)'],
+            opacity: [0, 1]
+        }, config.extraProperties),
+        options: createDefaultOptions({
+            ...config,
+            duration: config.duration || 800,
+            easing: config.easing || BASE_EASING.easeOutQuad
+        })
+    });
+};
+/**
+ * Roll in animation
+ * @param target - Element to animate
+ * @param config - Animation configuration: duration, easing, extraProperties
+ * @returns Animation instance or definition
+ */
+const rollOut = (target, config = {}) => {
+    return new Animation({
+        target,
+        properties: mergeProperties({
+            transform: ['translateX(0) rotate(0)', 'translateX(100%) rotate(120deg)'],
+            opacity: [1, 0]
+        }, config.extraProperties),
+        options: createDefaultOptions({
+            ...config,
+            duration: config.duration || 800,
+            easing: config.easing || BASE_EASING.easeInQuad
+        })
+    });
+};
+/**
+ * Flash animation
+ * @param target - Element to animate
+ * @param config - Animation configuration: duration, easing, extraProperties
+ * @returns Animation instance or definition
+ */
+const flash = (target, config = {}) => {
+    const flashTimeline = new Timeline({ autoplay: config.autoplay });
+    flashTimeline.add({
+        target,
+        properties: { opacity: [1, 0] },
+        options: {
+            duration: (config.duration || 1000) * 0.25,
+            easing: BASE_EASING.easeOutQuad
+        }
+    });
+    flashTimeline.add({
+        target,
+        properties: { opacity: [0, 1] },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 1000) * 0.25,
+        }
+    }, '+=0');
+    flashTimeline.add({
+        target,
+        properties: { opacity: [1, 0] },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 1000) * 0.25,
+        }
+    }, '+=0');
+    flashTimeline.add({
+        target,
+        properties: { opacity: [0, 1] },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 1000) * 0.25,
+        }
+    }, '+=0');
+    return flashTimeline;
+};
+/**
+ * Rubber band animation
+ * @param target - Element to animate
+ * @param config - Animation configuration: duration, easing, intensity, autoplay
+ * @returns Animation instance or definition
+ */
+const rubberBand = (target, config = {}) => {
+    const intensity = config.intensity || 1;
+    const rubberBandTimeline = new Timeline({ autoplay: config.autoplay });
+    rubberBandTimeline.add({
+        target,
+        properties: {
+            transform: ['scale3d(1, 1, 1)', `scale3d(${1.25 * intensity}, ${0.75 * intensity}, 1)`]
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 1000) * 0.15,
+        }
+    });
+    rubberBandTimeline.add({
+        target,
+        properties: {
+            transform: [`scale3d(${1.25 * intensity}, ${0.75 * intensity}, 1)`, `scale3d(${0.75 * intensity}, ${1.25 * intensity}, 1)`]
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 1000) * 0.15,
+        }
+    }, '+=0');
+    rubberBandTimeline.add({
+        target,
+        properties: {
+            transform: [`scale3d(${0.75 * intensity}, ${1.25 * intensity}, 1)`, `scale3d(${1.15 * intensity}, ${0.85 * intensity}, 1)`]
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 1000) * 0.15,
+        }
+    }, '+=0');
+    rubberBandTimeline.add({
+        target,
+        properties: {
+            transform: [`scale3d(${1.15 * intensity}, ${0.85 * intensity}, 1)`, `scale3d(${0.95 * intensity}, ${1.05 * intensity}, 1)`]
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 1000) * 0.15,
+        }
+    }, '+=0');
+    rubberBandTimeline.add({
+        target,
+        properties: {
+            transform: [`scale3d(${0.95 * intensity}, ${1.05 * intensity}, 1)`, 'scale3d(1, 1, 1)']
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 1000) * 0.15,
+        }
+    }, '+=0');
+    return rubberBandTimeline;
+};
+const wobble = (target, config = {}) => {
+    const wobbleTimeline = new Timeline({ autoplay: config.autoplay });
+    const intensity = config.intensity || 1;
+    wobbleTimeline.add({
+        target,
+        properties: {
+            transform: ['translate3d(0, 0, 0) rotate(0)', `translate3d(${ -25 * intensity}%, 0, 0) rotate(${ -5 * intensity}deg)`]
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 1000) * 0.15,
+        }
+    });
+    wobbleTimeline.add({
+        target,
+        properties: {
+            transform: [`translate3d(${ -25 * intensity}%, 0, 0) rotate(${ -5 * intensity}deg)`, `translate3d(${20 * intensity}%, 0, 0) rotate(${3 * intensity}deg)`]
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 1000) * 0.15,
+        }
+    }, '+=0');
+    wobbleTimeline.add({
+        target,
+        properties: {
+            transform: [`translate3d(${20 * intensity}%, 0, 0) rotate(${3 * intensity}deg)`, `translate3d(${ -15 * intensity}%, 0, 0) rotate(${ -3 * intensity}deg)`]
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 1000) * 0.15,
+        }
+    }, '+=0');
+    wobbleTimeline.add({
+        target,
+        properties: {
+            transform: [`translate3d(${ -15 * intensity}%, 0, 0) rotate(${ -3 * intensity}deg)`, `translate3d(${10 * intensity}%, 0, 0) rotate(${2 * intensity}deg)`]
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 1000) * 0.15,
+        }
+    }, '+=0');
+    wobbleTimeline.add({
+        target,
+        properties: {
+            transform: [`translate3d(${10 * intensity}%, 0, 0) rotate(${2 * intensity}deg)`, `translate3d(${ -5 * intensity}%, 0, 0) rotate(${ -1 * intensity}deg)`]
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 1000) * 0.15,
+        }
+    }, '+=0');
+    wobbleTimeline.add({
+        target,
+        properties: {
+            transform: [`translate3d(${ -5 * intensity}%, 0, 0) rotate(${ -1 * intensity}deg)`, 'translate3d(0, 0, 0) rotate(0)']
+        },
+        options: {
+            ...createDefaultOptions(config),
+            duration: (config.duration || 1000) * 0.15,
+        }
+    }, '+=0');
+    return wobbleTimeline;
+};
+/**
+ * Light speed in animation
+ * @param target - Element to animate
+ * @param config - Animation configuration
+ * @returns Animation instance or definition
+ */
+const lightSpeedIn = (target, config = {}) => {
+    return new Animation({
+        target,
+        properties: mergeProperties({
+            transform: ['translateX(100%) skewX(-30deg)', 'translateX(0) skewX(0)'],
+            opacity: [0, 1]
+        }, config.extraProperties),
+        options: createDefaultOptions({
+            ...config,
+            duration: config.duration || 1000,
+            easing: config.easing || BASE_EASING.easeOutQuad
+        })
+    });
+};
+/**
+ * Light speed out animation
+ * @param target - Element to animate
+ * @param config - Animation configuration
+ * @returns Animation instance or definition
+ */
+const lightSpeedOut = (target, config = {}) => {
+    return new Animation({
+        target,
+        properties: mergeProperties({
+            transform: ['translateX(0) skewX(0)', 'translateX(100%) skewX(30deg)'],
+            opacity: [1, 0]
+        }, config.extraProperties),
+        options: createDefaultOptions({
+            ...config,
+            duration: config.duration || 1000,
+            easing: config.easing || BASE_EASING.easeInQuad
+        })
+    });
+};
+/**
  * Animation presets library
  */
 const presets = {
-    /**
-     * Fade in animation
-     * @param target - Element to animate
-     * @param config - Animation configuration
-     * @returns Animation instance or definition
-     */
-    fadeIn: (target, config = {}) => {
-        const definition = {
-            target,
-            properties: mergeProperties({ opacity: [0, 1] }, config.extraProperties),
-            options: createDefaultOptions(config)
-        };
-        return config.autoplay ? new Animation(definition).play() : definition;
-    },
-    /**
-     * Fade out animation
-     * @param target - Element to animate
-     * @param config - Animation configuration
-     * @returns Animation instance or definition
-     */
-    fadeOut: (target, config = {}) => {
-        const definition = {
-            target,
-            properties: mergeProperties({ opacity: [1, 0] }, config.extraProperties),
-            options: createDefaultOptions(config)
-        };
-        return config.autoplay ? new Animation(definition).play() : definition;
-    },
-    /**
-     * Slide in animation
-     * @param target - Element to animate
-     * @param config - Animation configuration
-     * @returns Animation instance or definition
-     */
-    slideIn: (target, config = {}) => {
-        const direction = config.direction || 'left';
-        const distance = config.distance || '100px';
-        const transforms = {
-            left: [`translateX(-${distance})`, 'translateX(0)'],
-            right: [`translateX(${distance})`, 'translateX(0)'],
-            up: [`translateY(-${distance})`, 'translateY(0)'],
-            down: [`translateY(${distance})`, 'translateY(0)']
-        };
-        const definition = {
-            target,
-            properties: mergeProperties({
-                transform: transforms[direction],
-                opacity: [0, 1]
-            }, config.extraProperties),
-            options: createDefaultOptions(config)
-        };
-        return config.autoplay ? new Animation(definition).play() : definition;
-    },
-    /**
-     * Slide out animation
-     * @param target - Element to animate
-     * @param config - Animation configuration
-     * @returns Animation instance or definition
-     */
-    slideOut: (target, config = {}) => {
-        const direction = config.direction || 'left';
-        const distance = config.distance || '100px';
-        const transforms = {
-            left: ['translateX(0)', `translateX(-${distance})`],
-            right: ['translateX(0)', `translateX(${distance})`],
-            up: ['translateY(0)', `translateY(-${distance})`],
-            down: ['translateY(0)', `translateY(${distance})`]
-        };
-        const definition = {
-            target,
-            properties: mergeProperties({
-                transform: transforms[direction],
-                opacity: [1, 0]
-            }, config.extraProperties),
-            options: createDefaultOptions(config)
-        };
-        return config.autoplay ? new Animation(definition).play() : definition;
-    },
-    /**
-     * Zoom in animation
-     * @param target - Element to animate
-     * @param config - Animation configuration
-     * @returns Animation instance or definition
-     */
-    zoomIn: (target, config = {}) => {
-        const scale = config.scale || 0.5;
-        const definition = {
-            target,
-            properties: mergeProperties({
-                transform: [`scale(${scale})`, 'scale(1)'],
-                opacity: [0, 1]
-            }, config.extraProperties),
-            options: createDefaultOptions(config)
-        };
-        return config.autoplay ? new Animation(definition).play() : definition;
-    },
-    /**
-     * Zoom out animation
-     * @param target - Element to animate
-     * @param config - Animation configuration
-     * @returns Animation instance or definition
-     */
-    zoomOut: (target, config = {}) => {
-        const scale = config.scale || 0.5;
-        const definition = {
-            target,
-            properties: mergeProperties({
-                transform: ['scale(1)', `scale(${scale})`],
-                opacity: [1, 0]
-            }, config.extraProperties),
-            options: createDefaultOptions(config)
-        };
-        return config.autoplay ? new Animation(definition).play() : definition;
-    },
-    /**
-     * Flip animation
-     * @param target - Element to animate
-     * @param config - Animation configuration
-     * @returns Animation instance or definition
-     */
-    flip: (target, config = {}) => {
-        const direction = config.direction || 'x';
-        const axis = direction === 'x' ? 'Y' : 'X';
-        const definition = {
-            target,
-            properties: mergeProperties({
-                transform: [
-                    `perspective(400px) rotate${axis}(0)`,
-                    `perspective(400px) rotate${axis}(180deg)`
-                ]
-            }, config.extraProperties),
-            options: createDefaultOptions({
-                ...config,
-                easing: config.easing || BASE_EASING.easeInOutQuart
-            })
-        };
-        return config.autoplay ? new Animation(definition).play() : definition;
-    },
-    /**
-     * Shake animation
-     * @param target - Element to animate
-     * @param config - Animation configuration
-     * @returns Animation instance or definition
-     */
-    shake: (target, config = {}) => {
-        const intensity = config.intensity || 1;
-        const distance = config.distance || '10px';
-        const shakeDistance = `${parseInt(distance) * intensity}px`;
-        // Shake is a timeline animation with multiple steps
-        const timeline = new Timeline();
-        timeline.add({
-            target,
-            properties: {
-                transform: ['translateX(0)', `translateX(-${shakeDistance})`]
-            },
-            options: {
-                duration: (config.duration || 500) / 6,
-                easing: BASE_EASING.easeOutQuad
-            }
-        });
-        timeline.add({
-            target,
-            properties: {
-                transform: [`translateX(-${shakeDistance})`, `translateX(${shakeDistance})`]
-            },
-            options: {
-                duration: (config.duration || 500) / 6,
-                easing: BASE_EASING.easeOutQuad
-            }
-        }, '+=0');
-        timeline.add({
-            target,
-            properties: {
-                transform: [`translateX(${shakeDistance})`, `translateX(-${shakeDistance})`]
-            },
-            options: {
-                duration: (config.duration || 500) / 6,
-                easing: BASE_EASING.easeOutQuad
-            }
-        }, '+=0');
-        timeline.add({
-            target,
-            properties: {
-                transform: [`translateX(-${shakeDistance})`, `translateX(${shakeDistance})`]
-            },
-            options: {
-                duration: (config.duration || 500) / 6,
-                easing: BASE_EASING.easeOutQuad
-            }
-        }, '+=0');
-        timeline.add({
-            target,
-            properties: {
-                transform: [`translateX(${shakeDistance})`, `translateX(-${shakeDistance})`]
-            },
-            options: {
-                duration: (config.duration || 500) / 6,
-                easing: BASE_EASING.easeOutQuad
-            }
-        }, '+=0');
-        timeline.add({
-            target,
-            properties: {
-                transform: [`translateX(-${shakeDistance})`, 'translateX(0)']
-            },
-            options: {
-                duration: (config.duration || 500) / 6,
-                easing: BASE_EASING.easeOutQuad
-            }
-        }, '+=0');
-        if (config.autoplay) {
-            timeline.play();
-        }
-        return timeline;
-    },
-    /**
-     * Pulse animation
-     * @param target - Element to animate
-     * @param config - Animation configuration
-     * @returns Animation instance or definition
-     */
-    pulse: (target, config = {}) => {
-        const intensity = config.intensity || 1;
-        const scale = 1 + (0.1 * intensity);
-        const timeline = new Timeline();
-        timeline.add({
-            target,
-            properties: {
-                transform: ['scale(1)', `scale(${scale})`]
-            },
-            options: {
-                duration: (config.duration || 500) / 2,
-                easing: BASE_EASING.easeOutQuad
-            }
-        });
-        timeline.add({
-            target,
-            properties: {
-                transform: [`scale(${scale})`, 'scale(1)']
-            },
-            options: {
-                duration: (config.duration || 500) / 2,
-                easing: BASE_EASING.easeInOutQuad
-            }
-        }, '+=0');
-        if (config.autoplay) {
-            timeline.play();
-        }
-        return timeline;
-    },
-    /**
-     * Bounce animation
-     * @param target - Element to animate
-     * @param config - Animation configuration
-     * @returns Animation instance or definition
-     */
-    bounce: (target, config = {}) => {
-        const intensity = config.intensity || 1;
-        const distance = config.distance || '30px';
-        const bounceHeight = `${parseInt(distance) * intensity}px`;
-        const timeline = new Timeline();
-        // Initial down movement
-        timeline.add({
-            target,
-            properties: {
-                transform: ['translateY(0)', `translateY(${bounceHeight})`]
-            },
-            options: {
-                duration: (config.duration || 800) * 0.25,
-                easing: BASE_EASING.easeInQuad
-            }
-        });
-        // Bounce up
-        timeline.add({
-            target,
-            properties: {
-                transform: [`translateY(${bounceHeight})`, 'translateY(0)']
-            },
-            options: {
-                duration: (config.duration || 800) * 0.25,
-                easing: BASE_EASING.easeOutQuad
-            }
-        }, '+=0');
-        // Small bounce down
-        timeline.add({
-            target,
-            properties: {
-                transform: ['translateY(0)', `translateY(${bounceHeight}/2)`]
-            },
-            options: {
-                duration: (config.duration || 800) * 0.15,
-                easing: BASE_EASING.easeInQuad
-            }
-        }, '+=0');
-        // Small bounce up
-        timeline.add({
-            target,
-            properties: {
-                transform: [`translateY(${bounceHeight}/2)`, 'translateY(0)']
-            },
-            options: {
-                duration: (config.duration || 800) * 0.15,
-                easing: BASE_EASING.easeOutQuad
-            }
-        }, '+=0');
-        // Tiny bounce down
-        timeline.add({
-            target,
-            properties: {
-                transform: ['translateY(0)', `translateY(${bounceHeight}/4)`]
-            },
-            options: {
-                duration: (config.duration || 800) * 0.1,
-                easing: BASE_EASING.easeInQuad
-            }
-        }, '+=0');
-        // Tiny bounce up
-        timeline.add({
-            target,
-            properties: {
-                transform: [`translateY(${bounceHeight}/4)`, 'translateY(0)']
-            },
-            options: {
-                duration: (config.duration || 800) * 0.1,
-                easing: BASE_EASING.easeOutQuad
-            }
-        }, '+=0');
-        if (config.autoplay) {
-            timeline.play();
-        }
-        return timeline;
-    },
-    /**
-     * Swing animation
-     * @param target - Element to animate
-     * @param config - Animation configuration
-     * @returns Animation instance or definition
-     */
-    swing: (target, config = {}) => {
-        const intensity = config.intensity || 1;
-        const rotation = (config.rotation || 15) * intensity;
-        const timeline = new Timeline();
-        timeline.add({
-            target,
-            properties: {
-                transform: ['rotate(0deg)', `rotate(${rotation}deg)`]
-            },
-            options: {
-                duration: (config.duration || 800) * 0.2,
-                easing: BASE_EASING.easeOutQuad
-            }
-        });
-        timeline.add({
-            target,
-            properties: {
-                transform: [`rotate(${rotation}deg)`, `rotate(-${rotation * 0.8}deg)`]
-            },
-            options: {
-                duration: (config.duration || 800) * 0.2,
-                easing: BASE_EASING.easeInOutQuad
-            }
-        }, '+=0');
-        timeline.add({
-            target,
-            properties: {
-                transform: [`rotate(-${rotation * 0.8}deg)`, `rotate(${rotation * 0.6}deg)`]
-            },
-            options: {
-                duration: (config.duration || 800) * 0.2,
-                easing: BASE_EASING.easeInOutQuad
-            }
-        }, '+=0');
-        timeline.add({
-            target,
-            properties: {
-                transform: [`rotate(${rotation * 0.6}deg)`, `rotate(-${rotation * 0.4}deg)`]
-            },
-            options: {
-                duration: (config.duration || 800) * 0.2,
-                easing: BASE_EASING.easeInOutQuad
-            }
-        }, '+=0');
-        timeline.add({
-            target,
-            properties: {
-                transform: [`rotate(-${rotation * 0.4}deg)`, 'rotate(0deg)']
-            },
-            options: {
-                duration: (config.duration || 800) * 0.2,
-                easing: BASE_EASING.easeInOutQuad
-            }
-        }, '+=0');
-        if (config.autoplay) {
-            timeline.play();
-        }
-        return timeline;
-    },
-    /**
-     * Tada animation (attention seeker)
-     * @param target - Element to animate
-     * @param config - Animation configuration
-     * @returns Animation instance or definition
-     */
-    tada: (target, config = {}) => {
-        const intensity = config.intensity || 1;
-        const scale1 = 1 - (0.1 * intensity);
-        const scale2 = 1 + (0.1 * intensity);
-        const rotation = (3 * intensity);
-        const timeline = new Timeline();
-        // Initial small scale
-        timeline.add({
-            target,
-            properties: {
-                transform: ['scale(1) rotate(0deg)', `scale(${scale1}) rotate(0deg)`]
-            },
-            options: {
-                duration: (config.duration || 800) * 0.1,
-                easing: BASE_EASING.easeOutQuad
-            }
-        });
-        // Scale up with rotation
-        timeline.add({
-            target,
-            properties: {
-                transform: [`scale(${scale1}) rotate(0deg)`, `scale(${scale2}) rotate(${rotation}deg)`]
-            },
-            options: {
-                duration: (config.duration || 800) * 0.1,
-                easing: BASE_EASING.easeOutQuad
-            }
-        }, '+=0');
-        // Rotation sequence
-        for (let i = 0; i < 5; i++) {
-            const fromRotation = i % 2 === 0 ? rotation : -rotation;
-            const toRotation = i % 2 === 0 ? -rotation : rotation;
-            timeline.add({
-                target,
-                properties: {
-                    transform: [`scale(${scale2}) rotate(${fromRotation}deg)`, `scale(${scale2}) rotate(${toRotation}deg)`]
-                },
-                options: {
-                    duration: (config.duration || 800) * 0.1,
-                    easing: BASE_EASING.easeOutQuad
-                }
-            }, '+=0');
-        }
-        // Return to normal
-        timeline.add({
-            target,
-            properties: {
-                transform: [`scale(${scale2}) rotate(${rotation}deg)`, 'scale(1) rotate(0deg)']
-            },
-            options: {
-                duration: (config.duration || 800) * 0.1,
-                easing: BASE_EASING.easeOutQuad
-            }
-        }, '+=0');
-        if (config.autoplay) {
-            timeline.play();
-        }
-        return timeline;
-    },
-    /**
-     * Jello animation (wiggle effect)
-     * @param target - Element to animate
-     * @param config - Animation configuration
-     * @returns Animation instance or definition
-     */
-    jello: (target, config = {}) => {
-        const intensity = config.intensity || 1;
-        const timeline = new Timeline();
-        // Initial skew
-        timeline.add({
-            target,
-            properties: {
-                transform: ['skewX(0deg) skewY(0deg)', `skewX(-12.5deg * ${intensity}) skewY(-12.5deg * ${intensity})`]
-            },
-            options: {
-                duration: (config.duration || 1000) * 0.15,
-                easing: BASE_EASING.easeOutQuad
-            }
-        });
-        // Alternating skews
-        const skews = [
-            [12.5, 12.5],
-            [-6.25, -6.25],
-            [3.125, 3.125],
-            [-1.5625, -1.5625],
-            [0.78125, 0.78125],
-            [-0.390625, -0.390625]
-        ];
-        skews.forEach((skew, index) => {
-            const [skewX, skewY] = skew.map(s => s * intensity);
-            timeline.add({
-                target,
-                properties: {
-                    transform: [
-                        `skewX(${-skewX}deg) skewY(${-skewY}deg)`,
-                        `skewX(${skewX}deg) skewY(${skewY}deg)`
-                    ]
-                },
-                options: {
-                    duration: (config.duration || 1000) * 0.1,
-                    easing: BASE_EASING.easeOutQuad
-                }
-            }, '+=0');
-        });
-        // Return to normal
-        timeline.add({
-            target,
-            properties: {
-                transform: [`skewX(${skews[skews.length - 1][0] * intensity}deg) skewY(${skews[skews.length - 1][1] * intensity}deg)`, 'skewX(0deg) skewY(0deg)']
-            },
-            options: {
-                duration: (config.duration || 1000) * 0.05,
-                easing: BASE_EASING.easeOutQuad
-            }
-        }, '+=0');
-        if (config.autoplay) {
-            timeline.play();
-        }
-        return timeline;
-    },
-    /**
-     * Heartbeat animation
-     * @param target - Element to animate
-     * @param config - Animation configuration
-     * @returns Animation instance or definition
-     */
-    heartbeat: (target, config = {}) => {
-        const intensity = config.intensity || 1;
-        const scale1 = 1 + (0.14 * intensity);
-        const scale2 = 1 + (0.30 * intensity);
-        const timeline = new Timeline();
-        // First beat
-        timeline.add({
-            target,
-            properties: {
-                transform: ['scale(1)', `scale(${scale1})`]
-            },
-            options: {
-                duration: (config.duration || 1500) * 0.14,
-                easing: BASE_EASING.easeOutQuad
-            }
-        });
-        timeline.add({
-            target,
-            properties: {
-                transform: [`scale(${scale1})`, 'scale(1)']
-            },
-            options: {
-                duration: (config.duration || 1500) * 0.14,
-                easing: BASE_EASING.easeInQuad
-            }
-        }, '+=0');
-        // Slight pause
-        timeline.add({
-            target,
-            properties: {
-                transform: ['scale(1)', 'scale(1)']
-            },
-            options: {
-                duration: (config.duration || 1500) * 0.14,
-            }
-        }, '+=0');
-        // Second stronger beat
-        timeline.add({
-            target,
-            properties: {
-                transform: ['scale(1)', `scale(${scale2})`]
-            },
-            options: {
-                duration: (config.duration || 1500) * 0.14,
-                easing: BASE_EASING.easeOutQuad
-            }
-        }, '+=0');
-        timeline.add({
-            target,
-            properties: {
-                transform: [`scale(${scale2})`, 'scale(1)']
-            },
-            options: {
-                duration: (config.duration || 1500) * 0.14,
-                easing: BASE_EASING.easeInQuad
-            }
-        }, '+=0');
-        // Rest period
-        timeline.add({
-            target,
-            properties: {
-                transform: ['scale(1)', 'scale(1)']
-            },
-            options: {
-                duration: (config.duration || 1500) * 0.3,
-            }
-        }, '+=0');
-        if (config.autoplay) {
-            timeline.play();
-        }
-        return timeline;
-    },
-    /**
-     * Hinge animation (fall and rotate out)
-     * @param target - Element to animate
-     * @param config - Animation configuration
-     * @returns Animation instance or definition
-     */
-    hinge: (target, config = {}) => {
-        const timeline = new Timeline();
-        const duration = config.duration || 2000;
-        // Set transform origin
-        if (target instanceof HTMLElement) {
-            target.style.transformOrigin = 'top left';
-        }
-        // First rotation
-        timeline.add({
-            target,
-            properties: {
-                transform: ['rotate(0deg)', 'rotate(80deg)'],
-                opacity: [1, 1]
-            },
-            options: {
-                duration: duration * 0.2,
-                easing: BASE_EASING.easeOutQuad
-            }
-        });
-        // Second rotation
-        timeline.add({
-            target,
-            properties: {
-                transform: ['rotate(80deg)', 'rotate(60deg)']
-            },
-            options: {
-                duration: duration * 0.2,
-                easing: BASE_EASING.easeOutQuad
-            }
-        }, '+=0');
-        // Third rotation
-        timeline.add({
-            target,
-            properties: {
-                transform: ['rotate(60deg)', 'rotate(80deg)']
-            },
-            options: {
-                duration: duration * 0.2,
-                easing: BASE_EASING.easeOutQuad
-            }
-        }, '+=0');
-        // Fall off
-        timeline.add({
-            target,
-            properties: {
-                transform: ['rotate(80deg)', 'translateY(700px) rotate(80deg)'],
-                opacity: [1, 0]
-            },
-            options: {
-                duration: duration * 0.4,
-                easing: BASE_EASING.easeInQuad
-            }
-        }, '+=0');
-        if (config.autoplay) {
-            timeline.play();
-        }
-        return timeline;
-    },
-    /**
-     * Roll in animation
-     * @param target - Element to animate
-     * @param config - Animation configuration
-     * @returns Animation instance or definition
-     */
-    rollIn: (target, config = {}) => {
-        const definition = {
-            target,
-            properties: mergeProperties({
-                transform: ['translateX(-100%) rotate(-120deg)', 'translateX(0) rotate(0)'],
-                opacity: [0, 1]
-            }, config.extraProperties),
-            options: createDefaultOptions({
-                ...config,
-                duration: config.duration || 800,
-                easing: config.easing || BASE_EASING.easeOutQuad
-            })
-        };
-        return config.autoplay ? new Animation(definition).play() : definition;
-    },
-    /**
-     * Roll out animation
-     * @param target - Element to animate
-     * @param config - Animation configuration
-     * @returns Animation instance or definition
-     */
-    rollOut: (target, config = {}) => {
-        const definition = {
-            target,
-            properties: mergeProperties({
-                transform: ['translateX(0) rotate(0)', 'translateX(100%) rotate(120deg)'],
-                opacity: [1, 0]
-            }, config.extraProperties),
-            options: createDefaultOptions({
-                ...config,
-                duration: config.duration || 800,
-                easing: config.easing || BASE_EASING.easeInQuad
-            })
-        };
-        return config.autoplay ? new Animation(definition).play() : definition;
-    },
-    /**
-     * Flash animation
-     * @param target - Element to animate
-     * @param config - Animation configuration
-     * @returns Animation instance or definition
-     */
-    flash: (target, config = {}) => {
-        const timeline = new Timeline();
-        timeline.add({
-            target,
-            properties: { opacity: [1, 0] },
-            options: { duration: (config.duration || 1000) * 0.25, easing: BASE_EASING.easeOutQuad }
-        });
-        timeline.add({
-            target,
-            properties: { opacity: [0, 1] },
-            options: { duration: (config.duration || 1000) * 0.25, easing: BASE_EASING.easeOutQuad }
-        }, '+=0');
-        timeline.add({
-            target,
-            properties: { opacity: [1, 0] },
-            options: { duration: (config.duration || 1000) * 0.25, easing: BASE_EASING.easeOutQuad }
-        }, '+=0');
-        timeline.add({
-            target,
-            properties: { opacity: [0, 1] },
-            options: { duration: (config.duration || 1000) * 0.25, easing: BASE_EASING.easeOutQuad }
-        }, '+=0');
-        if (config.autoplay) {
-            timeline.play();
-        }
-        return timeline;
-    },
-    /**
-     * Rubber band animation
-     * @param target - Element to animate
-     * @param config - Animation configuration
-     * @returns Animation instance or definition
-     */
-    rubberBand: (target, config = {}) => {
-        const timeline = new Timeline();
-        const intensity = config.intensity || 1;
-        timeline.add({
-            target,
-            properties: {
-                transform: ['scale3d(1, 1, 1)', `scale3d(${1.25 * intensity}, ${0.75 * intensity}, 1)`]
-            },
-            options: {
-                duration: (config.duration || 1000) * 0.15,
-                easing: BASE_EASING.easeOutQuad
-            }
-        });
-        timeline.add({
-            target,
-            properties: {
-                transform: [`scale3d(${1.25 * intensity}, ${0.75 * intensity}, 1)`, `scale3d(${0.75 * intensity}, ${1.25 * intensity}, 1)`]
-            },
-            options: {
-                duration: (config.duration || 1000) * 0.15,
-                easing: BASE_EASING.easeOutQuad
-            }
-        }, '+=0');
-        timeline.add({
-            target,
-            properties: {
-                transform: [`scale3d(${0.75 * intensity}, ${1.25 * intensity}, 1)`, `scale3d(${1.15 * intensity}, ${0.85 * intensity}, 1)`]
-            },
-            options: {
-                duration: (config.duration || 1000) * 0.15,
-                easing: BASE_EASING.easeOutQuad
-            }
-        }, '+=0');
-        timeline.add({
-            target,
-            properties: {
-                transform: [`scale3d(${1.15 * intensity}, ${0.85 * intensity}, 1)`, `scale3d(${0.95 * intensity}, ${1.05 * intensity}, 1)`]
-            },
-            options: {
-                duration: (config.duration || 1000) * 0.15,
-                easing: BASE_EASING.easeOutQuad
-            }
-        }, '+=0');
-        timeline.add({
-            target,
-            properties: {
-                transform: [`scale3d(${0.95 * intensity}, ${1.05 * intensity}, 1)`, 'scale3d(1, 1, 1)']
-            },
-            options: {
-                duration: (config.duration || 1000) * 0.15,
-                easing: BASE_EASING.easeOutQuad
-            }
-        }, '+=0');
-        if (config.autoplay) {
-            timeline.play();
-        }
-        return timeline;
-    },
-    /**
-     * Wobble animation
-     * @param target - Element to animate
-     * @param config - Animation configuration
-     * @returns Animation instance or definition
-     */
-    wobble: (target, config = {}) => {
-        const timeline = new Timeline();
-        const intensity = config.intensity || 1;
-        timeline.add({
-            target,
-            properties: {
-                transform: ['translate3d(0, 0, 0) rotate(0)', `translate3d(${ -25 * intensity}%, 0, 0) rotate(${ -5 * intensity}deg)`]
-            },
-            options: {
-                duration: (config.duration || 1000) * 0.15,
-                easing: BASE_EASING.easeOutQuad
-            }
-        });
-        timeline.add({
-            target,
-            properties: {
-                transform: [`translate3d(${ -25 * intensity}%, 0, 0) rotate(${ -5 * intensity}deg)`, `translate3d(${20 * intensity}%, 0, 0) rotate(${3 * intensity}deg)`]
-            },
-            options: {
-                duration: (config.duration || 1000) * 0.15,
-                easing: BASE_EASING.easeOutQuad
-            }
-        }, '+=0');
-        timeline.add({
-            target,
-            properties: {
-                transform: [`translate3d(${20 * intensity}%, 0, 0) rotate(${3 * intensity}deg)`, `translate3d(${ -15 * intensity}%, 0, 0) rotate(${ -3 * intensity}deg)`]
-            },
-            options: {
-                duration: (config.duration || 1000) * 0.15,
-                easing: BASE_EASING.easeOutQuad
-            }
-        }, '+=0');
-        timeline.add({
-            target,
-            properties: {
-                transform: [`translate3d(${ -15 * intensity}%, 0, 0) rotate(${ -3 * intensity}deg)`, `translate3d(${10 * intensity}%, 0, 0) rotate(${2 * intensity}deg)`]
-            },
-            options: {
-                duration: (config.duration || 1000) * 0.15,
-                easing: BASE_EASING.easeOutQuad
-            }
-        }, '+=0');
-        timeline.add({
-            target,
-            properties: {
-                transform: [`translate3d(${10 * intensity}%, 0, 0) rotate(${2 * intensity}deg)`, `translate3d(${ -5 * intensity}%, 0, 0) rotate(${ -1 * intensity}deg)`]
-            },
-            options: {
-                duration: (config.duration || 1000) * 0.15,
-                easing: BASE_EASING.easeOutQuad
-            }
-        }, '+=0');
-        timeline.add({
-            target,
-            properties: {
-                transform: [`translate3d(${ -5 * intensity}%, 0, 0) rotate(${ -1 * intensity}deg)`, 'translate3d(0, 0, 0) rotate(0)']
-            },
-            options: {
-                duration: (config.duration || 1000) * 0.15,
-                easing: BASE_EASING.easeOutQuad
-            }
-        }, '+=0');
-        if (config.autoplay) {
-            timeline.play();
-        }
-        return timeline;
-    },
-    /**
-     * Light speed in animation
-     * @param target - Element to animate
-     * @param config - Animation configuration
-     * @returns Animation instance or definition
-     */
-    lightSpeedIn: (target, config = {}) => {
-        const definition = {
-            target,
-            properties: mergeProperties({
-                transform: ['translateX(100%) skewX(-30deg)', 'translateX(0) skewX(0)'],
-                opacity: [0, 1]
-            }, config.extraProperties),
-            options: createDefaultOptions({
-                ...config,
-                duration: config.duration || 1000,
-                easing: config.easing || BASE_EASING.easeOutQuad
-            })
-        };
-        return config.autoplay ? new Animation(definition).play() : definition;
-    },
-    /**
-     * Light speed out animation
-     * @param target - Element to animate
-     * @param config - Animation configuration
-     * @returns Animation instance or definition
-     */
-    lightSpeedOut: (target, config = {}) => {
-        const definition = {
-            target,
-            properties: mergeProperties({
-                transform: ['translateX(0) skewX(0)', 'translateX(100%) skewX(30deg)'],
-                opacity: [1, 0]
-            }, config.extraProperties),
-            options: createDefaultOptions({
-                ...config,
-                duration: config.duration || 1000,
-                easing: config.easing || BASE_EASING.easeInQuad
-            })
-        };
-        return config.autoplay ? new Animation(definition).play() : definition;
-    }
+    fadeIn,
+    fadeOut,
+    slideIn,
+    slideOut,
+    zoomIn,
+    zoomOut,
+    flipIn,
+    flipOut,
+    shake,
+    pulse,
+    bounce,
+    swing,
+    jello,
+    heartbeat,
+    hinge,
+    rollIn,
+    rollOut,
+    flash,
+    rubberBand,
+    wobble,
+    lightSpeedIn,
+    lightSpeedOut,
 };
 /**
  * Helper for creating animation presets
@@ -2703,79 +3090,174 @@ const presets = {
  * @returns Animation or Timeline instance
  */
 function createPresetAnimation(name, target, config = {}) {
-    if (!presets[name]) {
+    if (!(name in PRESETS)) {
         throw new Error(`Animation preset "${name}" not found`);
     }
     return presets[name](target, config);
 }
 
-var EasingType;
-(function (EasingType) {
-    EasingType["Linear"] = "linear";
-    EasingType["Quad"] = "quad";
-    EasingType["Cubic"] = "cubic";
-    EasingType["Elastic"] = "elastic";
-    EasingType["Back"] = "back";
-    EasingType["Bounce"] = "bounce";
-    EasingType["Sine"] = "sine";
-    EasingType["Circular"] = "circular";
-    EasingType["Exponential"] = "exponential";
-    EasingType["Quartic"] = "quartic";
-    EasingType["Quintic"] = "quintic";
-    EasingType["Quadratic"] = "quadratic";
-    EasingType["CubicBezier"] = "cubicBezier";
-})(EasingType || (EasingType = {}));
-
-// Import core functionality
-// Create a simple default export object
+// Import and re-export core functionality
+// Create a default export object
 const animate = {
     Animation,
     Timeline,
     easings,
-    createEasings,
-    easingUtils,
     stagger,
     createStaggeredAnimations,
     presets,
-    createPresetAnimation,
     // Convenience methods
     /**
+     * Create an animation instance
+     * @param target - Target element or object to animate
+     * @param properties - Properties to animate with from/to values
+     * @param options - Animation options
+     * @returns Animation instance
+     */
+    create: (target, properties, options) => {
+        var _a;
+        return new Animation({
+            target,
+            properties,
+            options: {
+                ...options,
+                autoplay: (_a = options.autoplay) !== null && _a !== void 0 ? _a : false // Default to false if not specified
+            }
+        });
+    },
+    /**
      * Create and play an animation
+     * @param target - Target element or object to animate
+     * @param properties - Properties to animate with from/to values
+     * @param options - Animation options
+     * @returns Animation instance
      */
     play: (target, properties, options) => {
         return new Animation({
             target,
             properties,
-            options
-        }).play();
+            options: {
+                ...options,
+                autoplay: true // Override autoplay to true
+            }
+        });
+    },
+    /**
+     * Create and play an animation, returning a Promise
+     * @param target - Target element or object to animate
+     * @param properties - Properties to animate with from/to values
+     * @param options - Animation options
+     * @returns Promise that resolves when animation completes
+     */
+    playAndWait: (target, properties, options) => {
+        return new Animation({
+            target,
+            properties,
+            options: {
+                ...options,
+                autoplay: true // Override autoplay to true
+            }
+        }).toPromise();
+    },
+    /**
+     * Create a timeline instance
+     * @param options - Timeline options
+     * @returns Timeline instance
+     */
+    createTimeline: (options = {}) => {
+        var _a;
+        return new Timeline({
+            autoplay: (_a = options.autoplay) !== null && _a !== void 0 ? _a : false // Default to false if not specified
+        });
     },
     /**
      * Apply a preset animation
+     * @param name - Preset animation name
+     * @param target - Target element or object
+     * @param config - Preset configuration
+     * @returns Animation or Timeline instance
      */
     preset: (name, target, config = {}) => {
-        return presets[name](target, { ...config });
+        var _a;
+        // Get the function name from PRESETS using the constant key
+        const presetFunctionName = PRESETS[name];
+        return presets[presetFunctionName](target, {
+            ...config,
+            autoplay: (_a = config.autoplay) !== null && _a !== void 0 ? _a : true // Default to true for backwards compatibility
+        });
+    },
+    /**
+     * Apply a preset animation and wait for completion
+     * @param name - Preset animation name
+     * @param target - Target element or object
+     * @param config - Preset configuration
+     * @returns Promise that resolves when animation completes
+     */
+    presetAndWait: (name, target, config = {}) => {
+        // Get the function name from PRESETS using the constant key
+        const presetFunctionName = PRESETS[name];
+        return presets[presetFunctionName](target, {
+            ...config,
+            autoplay: true // Override autoplay to true
+        }).toPromise();
     },
     /**
      * Create staggered animations
+     * @param targets - Array of elements to animate
+     * @param properties - Properties to animate
+     * @param options - Animation options
+     * @param staggerValue - Stagger delay value
+     * @param staggerOptions - Stagger configuration options
+     * @returns Array of Animation instances
      */
     staggerAnimation: (targets, properties, options, staggerValue, staggerOptions = {}) => {
-        return Animation.stagger(targets, properties, options, staggerValue, staggerOptions);
+        var _a;
+        const autoplay = (_a = options.autoplay) !== null && _a !== void 0 ? _a : false;
+        return Animation.stagger(targets, properties, { ...options, autoplay }, staggerValue, staggerOptions);
     },
     /**
-     * Apply a preset animation with stagger
+     * Create staggered animations and wait for all to complete
+     * @param targets - Array of elements to animate
+     * @param properties - Properties to animate
+     * @param options - Animation options
+     * @param staggerValue - Stagger delay value
+     * @param staggerOptions - Stagger configuration options
+     * @returns Promise that resolves when all animations complete
      */
+    staggerAnimationAndWait: (targets, properties, options, staggerValue, staggerOptions = {}) => {
+        const animations = Animation.stagger(targets, properties, { ...options, autoplay: true }, staggerValue, staggerOptions);
+        // Return a promise that resolves when all animations complete
+        return Promise.all(animations.map(anim => anim.toPromise())).then(() => { });
+    },
     staggerPreset: (name, targets, config = {}, staggerValue = 50, staggerOptions = {}) => {
+        // Get the function name from PRESETS using the constant key
+        const presetFunctionName = PRESETS[name];
         // Create a stagger delay function
         const staggerFn = stagger(staggerValue, staggerOptions);
         // Create staggered animations
         return createStaggeredAnimations(targets, (target, index, total) => {
-            return presets[name](target, {
+            var _a;
+            return presets[presetFunctionName](target, {
                 ...config,
-                autoplay: false
+                autoplay: (_a = config.autoplay) !== null && _a !== void 0 ? _a : false // Default to false for manual control
             });
         }, staggerFn);
+    },
+    /**
+     * Apply a preset animation with stagger and wait for all to complete
+     * @param name - Preset animation name
+     * @param targets - Array of elements to animate
+     * @param config - Preset configuration
+     * @param staggerValue - Stagger delay value
+     * @param staggerOptions - Stagger configuration options
+     * @returns Promise that resolves when all animations complete
+     */
+    staggerPresetAndWait: (name, targets, config = {}, staggerValue = 50, staggerOptions = {}) => {
+        const animations = animate.staggerPreset(name, targets, { ...config, autoplay: true }, // Force autoplay for promise-based execution
+        staggerValue, staggerOptions);
+        // Return a promise that resolves when all animations complete
+        return Promise.all(animations.map(animation => animation.toPromise())).then(() => { });
     }
 };
 
-export { Animation, EasingType, Timeline, createEasings, createPresetAnimation, createStaggeredAnimations, animate as default, easingUtils, easings, presets, stagger };
+export { Animation, Animation_types as AnimationTypes, Presets_types as PresetsTypes, PropertyAnimation_types as PropertyAnimationTypes, Stagger_types as StaggerTypes, Timeline, bounce, createAnimationObservable, createAnimationState, createEasings, createPresetAnimation, createStaggeredAnimations, animate as default, easingUtils, easings, fadeIn, fadeOut, flash, flipIn, flipOut, getAnimationEndTime, getCurrentValue, getDefaultValue, heartbeat, hinge, interpolate, isColor, isTransform, jello, lightSpeedIn, lightSpeedOut, parseCssValue, parsePropertyAnimation, parseTimelineOffset, presets, pulse, rollIn, rollOut, rubberBand, shake, slideIn, slideOut, stagger, styleBinder, swing, tada, updateTargetProperties, wobble, zoomIn, zoomOut };
 //# sourceMappingURL=index.mjs.map
