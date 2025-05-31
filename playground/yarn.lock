@@ -816,10 +816,10 @@
   resolved "https://registry.npmjs.org/@polka/url/-/url-1.0.0-next.29.tgz"
   integrity sha512-wwQAWhWSuHaag8c4q/KN/vCoeOJYshAIvMQwD4GpSb3OiZklFfvAgmj0VCBBImRpuF/aFgIRzllXlVX93Jevww==
 
-"@re-code/animate@^0.0.14":
-  version "0.0.14"
-  resolved "https://registry.npmjs.org/@re-code/animate/-/animate-0.0.14.tgz"
-  integrity sha512-ux+rZkn5kq1lscdgYLWAtTuiTfo3UNCmOyxmOBfBkCJXYbuGkBDdCauUHP1gzCJnJuxNXtfBlKZ5em1ZQ5SpDA==
+"@re-code/animate@^0.0.15":
+  version "0.0.15"
+  resolved "https://registry.npmjs.org/@re-code/animate/-/animate-0.0.15.tgz"
+  integrity sha512-yrqAByGHgjWBFx58uzkQLCXLipOP+rw09mpr9+AUk1nIlywcCGaCbyZQSCYwGCDz2+jfdfR9iJL+QxX1OT+khA==
   dependencies:
     rxjs "^7.8.2"
     ts-jest "^29.3.2"

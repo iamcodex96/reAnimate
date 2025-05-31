@@ -1,9 +1,11 @@
 import { Observable, Subscription } from 'rxjs';
 import { tap, finalize } from 'rxjs/operators';
 
-import { AnimationDefinition, AnimationOptions, AnimationState } from './types';
+import {AnimationDefinition, AnimationOptions, AnimationState, PropertyAnimation} from './types';
 import { interpolate, updateTargetProperties } from './interpolation';
 import { createAnimationObservable, createAnimationState } from '../utils/rxjs.util';
+import { stagger, createStaggeredAnimations } from '../utils/stagger.util';
+import { StaggerOptions, StaggerValue } from '../core/stagger.types';
 
 export class Animation {
   private animationState = createAnimationState();
@@ -159,5 +161,36 @@ export class Animation {
     
     // Update target with all interpolated values
     updateTargetProperties(target, interpolatedValues);
+  }
+
+  /**
+   * Create staggered animations for multiple targets
+   * @param targets - Array of elements to animate
+   * @param properties - Properties to animate
+   * @param options - Animation options
+   * @param staggerValue - Stagger delay value
+   * @param staggerOptions - Stagger configuration options
+   * @returns Array of Animation instances
+   */
+  static stagger(
+      targets: any[],
+      properties: Record<string, PropertyAnimation>,
+      options: AnimationOptions,
+      staggerValue: StaggerValue,
+      staggerOptions: StaggerOptions = {}
+  ): Animation[] {
+    // Create a stagger delay function
+    const staggerFn = stagger(staggerValue, staggerOptions);
+
+    // Create staggered animations
+    return createStaggeredAnimations(
+        targets,
+        (target, index, total) => new Animation({
+          target,
+          properties,
+          options: { ...options }
+        }),
+        staggerFn
+    );
   }
 }
