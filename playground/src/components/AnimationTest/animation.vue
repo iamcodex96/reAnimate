@@ -24,7 +24,6 @@ export default defineComponent({
     const element = ref<HTMLElement | null>(null);
     const progress = ref(0);
     const progressText = computed(() => `${Math.floor(progress.value * 100)}%`);
-    
     let animation: Animation | null = null;
     let subscription: any = null;
     

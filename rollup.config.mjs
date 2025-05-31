@@ -11,16 +11,23 @@ export default [
         file: 'dist/index.js',
         format: 'cjs',
         sourcemap: true,
+        exports: 'auto' // Let Rollup determine the best exports mode
       },
       {
         file: 'dist/index.mjs',
         format: 'esm',
-        sourcemap: true,
+        sourcemap: true
       },
     ],
     plugins: [
       nodeResolve(),
-      typescript({ tsconfig: './tsconfig.json' }),
+      typescript({ 
+        tsconfig: './tsconfig.json',
+        compilerOptions: {
+          module: 'ESNext',
+          moduleResolution: 'node'
+        }
+      }),
     ],
     external: ['rxjs']
   },
